@@ -29,6 +29,7 @@ time_t fbsd_uptime(void)
 */
 import "C"
 import "errors"
+import "os"
 
 func getuptime_seconds() (int64, error) {
 	cr := C.fbsd_uptime()
@@ -37,12 +38,12 @@ func getuptime_seconds() (int64, error) {
 	case 0:
 		return r, nil
 	case -1:
-		return 0, errors.New("Unknown Error")
+		return 0, errors.New("unknown error")
 	case -2:
-		return 0, errors.New("Invalid Value (EINVAL)")
+		return 0, os.ErrInvalid
 	case -3:
-		return 0, errors.New("Non-superuser tried to set time (EPERM)")
+		return 0, os.ErrPermission
 	default:
-		return 0, errors.New("invalid return value")
+		panic("invalid return value")
 	}
 }
