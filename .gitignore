@@ -27,4 +27,5 @@ go.work.sum
 # other stuff
 .*.*.swp
 .*.swp
+gruptime/gruptime
 
