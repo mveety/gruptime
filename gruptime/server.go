@@ -174,7 +174,7 @@ func udpBroadcaster(straddr string) (chan uptime.Uptime, error) {
 	return resp, nil
 }
 
-func UDPServer(d *Database) error {
+func UDPServer(d *Database) {
 	netchan, err := udpListener(MulticastAddr)
 	if err != nil {
 		log.Fatal(err)

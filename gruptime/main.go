@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"github.com/mveety/gruptime/internal/uptime"
+	"os"
+	"log"
+	"flag"
 )
 
 func printUptime(u uptime.Uptime) {
@@ -21,3 +23,23 @@ func clientmain() {
 	}
 	os.Exit(0)
 }
+
+func servermain() {
+	db := initUptimedb()
+	log.Print("starting tcp server")
+	go TCPServer(db)
+	log.Print("starting udp multicast server")
+	UDPServer(db)
+}
+
+func main() {
+	startserver := flag.Bool("daemon", false, "run as gruptime daemon")
+
+	flag.Parse()
+	if *startserver {
+		servermain()
+	} else {
+		clientmain()
+	}
+}
+
