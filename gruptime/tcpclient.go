@@ -7,15 +7,16 @@ import (
 )
 
 func TCPGetUptimes(addr string) ([]uptime.Uptime, error) {
+	var msg TcpMessage
 	var uptimes []uptime.Uptime
 	conn, err := net.Dial("tcp", addr+":8784")
 	if err != nil {
 		return uptimes, err
 	}
 	decoder := gob.NewDecoder(conn)
-	decerr := decoder.Decode(&uptimes)
+	decerr := decoder.Decode(&msg)
 	if decerr != nil {
 		return uptimes, decerr
 	}
-	return uptimes, nil
+	return msg.Uptimes, nil
 }

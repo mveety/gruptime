@@ -71,6 +71,10 @@ func timerproc(alarm *Alarm) {
 	var timer *time.Timer = nil
 	control := alarm.control
 	cancel := alarm.cancel
+	select {
+	case firstinterval := <-control:
+		timer = time.NewTimer(time.Duration(firstinterval)*time.Second)
+	}
 	for {
 		select {
 		case newinterval := <-control:
