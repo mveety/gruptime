@@ -1,11 +1,11 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"github.com/mveety/gruptime/internal/uptime"
-	"os"
 	"log"
-	"flag"
+	"os"
 )
 
 func printUptime(u uptime.Uptime) {
@@ -42,4 +42,3 @@ func main() {
 		clientmain()
 	}
 }
-

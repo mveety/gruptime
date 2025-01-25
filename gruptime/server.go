@@ -111,13 +111,16 @@ func udpListenerProc(conn *net.UDPConn, resp chan uptime.Uptime) {
 	conn.SetReadBuffer(ReadBuffer)
 	for {
 		buf := make([]byte, ReadBuffer)
-		n, _, err := conn.ReadFromUDP(buf)
+		n, addr, err := conn.ReadFromUDP(buf)
 		if err != nil {
+			log.Print("error reading UDP message")
 			continue // TODO: errors!
 		}
 		if n < int(buf[0]) {
+			log.Printf("error: malformed message from %s: is %d should be %d", addr.String(), n, int(buf[0]))
 			continue // not enough bytes for message
 		}
+		log.Printf("got message from %s", addr.String())
 		newuptime := BytesUptime(buf[:n])
 		resp <- newuptime
 	}
