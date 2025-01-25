@@ -6,7 +6,6 @@ package uptime
 import (
 	"errors"
 	"fmt"
-	"io"
 	"os"
 )
 
@@ -19,7 +18,7 @@ func getload() (*loadaverage, error) {
 	var load loadaverage
 	n, err := fmt.Fscanf(file, "%f %f %f", &load.load1, &load.load5, &load.load15)
 	if err != nil || n != 3 {
-		return load, errors.New("unexpected /proc/loadavg")
+		return &load, errors.New("unexpected /proc/loadavg")
 	}
 	return &load, nil
 }
