@@ -1,0 +1,28 @@
+//go:build windows
+// +build windows
+
+// I don't have a windows machine to test this but it should
+// be a start for someone
+
+package uptime
+
+/*
+#include <windows.h>
+#include <sysinfoapi.h>
+#include <stdint.h>
+
+int64_t win_uptime(void)
+{
+	int64_t ms = 0;
+
+	ms = GetTickCount64();
+	return ms;
+}
+*/
+import "C"
+
+func getuptime_seconds() (int64, error) {
+	ms_c := C.win_uptime()
+	ms := int64(ms)
+	return ms / 1000
+}

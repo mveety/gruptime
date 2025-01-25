@@ -6,6 +6,7 @@ package uptime
 import (
 	"bufio"
 	"fmt"
+	"golang.org/x/sys/unix"
 	"log"
 	"os"
 	"strconv"
@@ -13,10 +14,10 @@ import (
 	"time"
 )
 
-func getuptime_seconds() (int64, error) {
+func file_getuptime_seconds() (int64, error) {
 	uptime_file, err := os.Open("/proc/uptime")
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 	defer uptime_file.Close()
 
@@ -24,4 +25,13 @@ func getuptime_seconds() (int64, error) {
 	uptimestrs := strings.Split(uptime_line, " ")
 	uptimestr, _, _ := strings.Cut(uptimestrs[0], ".")
 	return strconv.ParseInt(uptimestr, 10, 64), nil
+}
+
+func getuptime_seconds() (time.Duration, error) {
+	var sysinfo unix.Sysinfo_t
+	err := unix.Sysinfo(&info)
+	if err != nil {
+		return 0, err
+	}
+	return time.Duration(info.Uptime) * time.Second, nil
 }

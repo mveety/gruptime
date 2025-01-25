@@ -7,16 +7,17 @@ import (
 
 type Uptime struct {
 	Hostname string
+	OS       string
 	Time     time.Duration
+	Load1    float64
+	Load5    float64
+	Load15   float64
 }
 
-func (u Uptime) Strings() [2]string {
-	var s [2]string
-
-	s[0] = u.Hostname
-	s[1] = u.Time.String()
-
-	return s
+type loadaverage struct {
+	load1  float64
+	load5  float64
+	load15 float64
 }
 
 func GetUptime() (Uptime, error) {
@@ -27,13 +28,20 @@ func GetUptime() (Uptime, error) {
 	}
 
 	t, err := getuptime_seconds()
-
+	if err != nil {
+		return niluptime, err
+	}
+	l, err := getload()
 	if err != nil {
 		return niluptime, err
 	}
 
 	return Uptime{
 		Hostname: hostname,
-		Time:     time.Duration(t),
+		OS:       getos(),
+		Time:     t,
+		Load1:    l.load1,
+		Load5:    l.load5,
+		Load15:   l.load15,
 	}, nil
 }

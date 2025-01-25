@@ -30,20 +30,19 @@ time_t fbsd_uptime(void)
 import "C"
 import "errors"
 import "os"
+import "time"
 
-func getuptime_seconds() (int64, error) {
+func getuptime_seconds() (time.Duration, error) {
 	cr := C.fbsd_uptime()
 	r := int64(cr)
 	switch r {
-	case 0:
-		return r, nil
+	default:
+		return time.Duration(r) * time.Second, nil
 	case -1:
 		return 0, errors.New("unknown error")
 	case -2:
 		return 0, os.ErrInvalid
 	case -3:
 		return 0, os.ErrPermission
-	default:
-		panic("invalid return value")
 	}
 }
