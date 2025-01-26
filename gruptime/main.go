@@ -70,15 +70,14 @@ func main() {
 		log.Fatal("error: must start either tcp or udp server");
 	}
 
-	peers, n = readConfigfile(configfile)
-	log.Printf("found %d hosts", n)
-	if len(peers) > 0 {
-		for _, s := range peers {
-			log.Print(s)
-		}
-	}
-
 	if startserver {
+		peers, n = readConfigfile(configfile)
+		log.Printf("found %d hosts", n)
+		if len(peers) > 0 {
+			for _, s := range peers {
+				log.Print(s)
+			}
+		}
 		servermain()
 	} else {
 		clientmain()
