@@ -1,12 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"github.com/mveety/gruptime/internal/uptime"
 	"log"
+	"math"
 	"os"
-	"bufio"
 )
 
 var (
@@ -15,10 +16,30 @@ var (
 	notcp       bool   = false
 	configfile  string = "/usr/local/etc/gruptime.conf"
 	peers       []string
+	onlynode    string = ""
+	verbose     bool   = false
 )
 
 func printUptime(u uptime.Uptime) {
-	fmt.Printf("%-16s %-8s %v, load: %2f %2f %2f\n", u.Hostname, u.OS, u.Time, u.Load1, u.Load5, u.Load15)
+	uptime_days := int(math.Floor(u.Time.Hours()) / 24)
+	uptime_hours := int(u.Time.Hours()) % 24
+	uptime_minutes := int(u.Time.Minutes()) % 60
+	uptime_seconds := int(u.Time.Seconds()) % 60
+	var uptime string
+	if uptime_days < 1 {
+		if uptime_hours < 1 {
+			if uptime_minutes < 1 {
+				uptime = fmt.Sprintf("%d seconds", uptime_seconds)
+			} else {
+				uptime = fmt.Sprintf("%d minutes", uptime_minutes)
+			}
+		} else {
+			uptime = fmt.Sprintf("%2d:%02d", uptime_hours, uptime_minutes)
+		}
+	} else {
+		uptime = fmt.Sprintf("%d+%02d:%02d", uptime_days, uptime_hours, uptime_minutes)
+	}
+	fmt.Printf("%-16s %-8s %s, load %.2f, %.2f, %.2f\n", u.Hostname, u.OS, uptime, u.Load1, u.Load5, u.Load15)
 }
 
 func clientmain() {
@@ -27,17 +48,29 @@ func clientmain() {
 		fmt.Printf("error: unable to connect to local daemon: %v\n", err)
 	}
 
-	for _, u := range uptimes {
-		printUptime(u)
+	if onlynode == "" {
+		for _, u := range uptimes {
+			printUptime(u)
+		}
+	} else {
+		for _, u := range uptimes {
+			if u.Hostname == onlynode {
+				printUptime(u)
+			}
+		}
 	}
 	os.Exit(0)
 }
 
 func servermain() {
 	db := initUptimedb()
-	log.Print("starting tcp server")
+	if verbose {
+		log.Print("starting tcp server")
+	}
 	go TCPServer(db)
-	log.Print("starting multicast server")
+	if verbose {
+		log.Print("starting multicast server")
+	}
 	Server(db)
 }
 
@@ -64,19 +97,23 @@ func main() {
 	flag.BoolVar(&noudp, "noudp", false, "disable udp communication")
 	flag.BoolVar(&notcp, "notcp", false, "disable tcp communication")
 	flag.StringVar(&configfile, "config", "/usr/local/etc/gcruptime.conf", "configuration file")
+	flag.StringVar(&onlynode, "node", "", "node to query")
+	flag.BoolVar(&verbose, "verbose", false, "verbose output")
 
 	flag.Parse()
 	if startserver && notcp && noudp {
-		log.Fatal("error: must start either tcp or udp server");
+		log.Fatal("error: must start either tcp or udp server")
 	}
 
 	if startserver {
 		if !notcp {
 			peers, n = readConfigfile(configfile)
-			log.Printf("found %d hosts", n)
-			if len(peers) > 0 {
-				for _, s := range peers {
-					log.Print(s)
+			if verbose {
+				log.Printf("found %d hosts", n)
+				if len(peers) > 0 {
+					for _, s := range peers {
+						log.Print(s)
+					}
 				}
 			}
 		}

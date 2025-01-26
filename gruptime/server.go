@@ -121,7 +121,9 @@ func udpListenerProc(conn *net.UDPConn, resp chan uptime.Uptime) {
 			log.Printf("error: malformed udp message from %s: is %d should be %d", addr.String(), n, int(buf[0]))
 			continue // not enough bytes for message
 		}
-		log.Printf("got message from %s", addr.String())
+		if verbose {
+			log.Printf("got udp message from %s", addr.String())
+		}
 		newuptime := BytesUptime(buf[:n])
 		resp <- newuptime
 	}
@@ -132,7 +134,9 @@ func udpListener(straddr string) (chan uptime.Uptime, error) {
 	if noudp {
 		return resp, nil
 	}
-	log.Print("starting udp multicast")
+	if verbose {
+		log.Print("starting udp multicast")
+	}
 	addr, err := net.ResolveUDPAddr("udp", straddr)
 	if err != nil {
 		return resp, err
@@ -147,6 +151,7 @@ func udpListener(straddr string) (chan uptime.Uptime, error) {
 
 func tcpListenerWorker(conn net.Conn, resp chan uptime.Uptime) {
 	defer conn.Close()
+	addr := conn.RemoteAddr()
 	buf := make([]byte, ReadBuffer)
 	n, err := conn.Read(buf)
 	if err != nil {
@@ -156,6 +161,9 @@ func tcpListenerWorker(conn net.Conn, resp chan uptime.Uptime) {
 	if n < int(buf[0]) {
 		log.Printf("error: malformed tcp message: is %d should be %d", n, int(buf[0]))
 		return
+	}
+	if verbose {
+		log.Printf("got tcp message from %s", addr.String())
 	}
 	newuptime := BytesUptime(buf[:n])
 	resp <- newuptime
@@ -177,7 +185,9 @@ func tcpListener(tcpport string) (chan uptime.Uptime, error) {
 	if notcp {
 		return resp, nil
 	}
-	log.Print("starting tcp \"multicast\"")
+	if verbose {
+		log.Print("starting tcp \"multicast\"")
+	}
 	ln, err := net.Listen("tcp", "0.0.0.0"+tcpport)
 	if err != nil {
 		return resp, err
