@@ -10,8 +10,9 @@ import (
 )
 
 const (
-	MulticastAddr = "239.77.86.0:3825" // 239.M.V.0 :)
-	ReadBuffer    = 1024               // should be big enough
+	MulticastAddr    = "239.77.86.0:3825" // 239.M.V.0 :)
+	TcpBroadcastPort = ":3826"
+	ReadBuffer       = 1024 // should be big enough
 )
 
 var (
@@ -117,7 +118,7 @@ func udpListenerProc(conn *net.UDPConn, resp chan uptime.Uptime) {
 			continue // TODO: errors!
 		}
 		if n < int(buf[0]) {
-			log.Printf("error: malformed message from %s: is %d should be %d", addr.String(), n, int(buf[0]))
+			log.Printf("error: malformed udp message from %s: is %d should be %d", addr.String(), n, int(buf[0]))
 			continue // not enough bytes for message
 		}
 		log.Printf("got message from %s", addr.String())
@@ -128,6 +129,10 @@ func udpListenerProc(conn *net.UDPConn, resp chan uptime.Uptime) {
 
 func udpListener(straddr string) (chan uptime.Uptime, error) {
 	resp := make(chan uptime.Uptime)
+	if noudp {
+		return resp, nil
+	}
+	log.Print("starting udp multicast")
 	addr, err := net.ResolveUDPAddr("udp", straddr)
 	if err != nil {
 		return resp, err
@@ -140,10 +145,124 @@ func udpListener(straddr string) (chan uptime.Uptime, error) {
 	return resp, nil
 }
 
-func udpBroadcasterProc(conn *net.UDPConn, resp chan uptime.Uptime) {
+func tcpListenerWorker(conn net.Conn, resp chan uptime.Uptime) {
 	defer conn.Close()
+	buf := make([]byte, ReadBuffer)
+	n, err := conn.Read(buf)
+	if err != nil {
+		log.Print("error reading tcp message:", err)
+		return
+	}
+	if n < int(buf[0]) {
+		log.Printf("error: malformed tcp message: is %d should be %d", n, int(buf[0]))
+		return
+	}
+	newuptime := BytesUptime(buf[:n])
+	resp <- newuptime
+}
+
+func tcpListenerProc(ln net.Listener, resp chan uptime.Uptime) {
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			log.Print(err)
+			continue
+		}
+		go tcpListenerWorker(conn, resp)
+	}
+}
+
+func tcpListener(tcpport string) (chan uptime.Uptime, error) {
+	resp := make(chan uptime.Uptime)
+	if notcp {
+		return resp, nil
+	}
+	log.Print("starting tcp \"multicast\"")
+	ln, err := net.Listen("tcp", "0.0.0.0"+tcpport)
+	if err != nil {
+		return resp, err
+	}
+	go tcpListenerProc(ln, resp)
+	return resp, nil
+}
+
+func udpBroadcasterProc(conn *net.UDPConn, trigger chan uptime.Uptime) {
+	defer conn.Close()
+	for {
+		select {
+		case newuptime := <-trigger:
+			msg := UptimeBytes(newuptime)
+			_, e := conn.Write(msg)
+			if e != nil {
+				continue // TODO: errors!
+			}
+		}
+	}
+}
+
+func udpBroadcaster(straddr string, trigger chan uptime.Uptime) error {
+	addr, err := net.ResolveUDPAddr("udp", straddr)
+	if err != nil {
+		return err
+	}
+	conn, err := net.DialUDP("udp", nil, addr)
+	if err != nil {
+		return err
+	}
+	go udpBroadcasterProc(conn, trigger)
+	return nil
+}
+
+func tcpBroadcastWorker(hostport string, u uptime.Uptime) {
+	msg := UptimeBytes(u)
+	conn, err := net.Dial("tcp", hostport)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+	n, e := conn.Write(msg)
+	if e != nil {
+		return
+	}
+	if n < len(msg) {
+		return
+	}
+}
+
+func tcpBroadcastProc(tcpport string, trigger chan uptime.Uptime) {
+	for {
+		select {
+		case newuptime := <-trigger:
+			for _, host := range peers {
+				go tcpBroadcastWorker(host+tcpport, newuptime)
+			}
+		}
+	}
+}
+
+func tcpBroadcaster(tcpport string, trigger chan uptime.Uptime) error {
+	go tcpBroadcastProc(tcpport, trigger)
+	return nil
+}
+
+func BroadcasterProc(mcast string, tcpport string, resp chan uptime.Uptime) {
+	udptrigger := make(chan uptime.Uptime)
+	tcptrigger := make(chan uptime.Uptime)
+	if !noudp {
+		udpe := udpBroadcaster(mcast, udptrigger)
+		if udpe != nil {
+			log.Fatal(udpe)
+		}
+	}
+	if !notcp {
+		tcpe := tcpBroadcaster(tcpport, tcptrigger)
+		if tcpe != nil {
+			log.Fatal(tcpe)
+		}
+	}
+
 	startuptime, _ := uptime.GetUptime()
-	resp <- startuptime // load up the db with yourself
+	resp <- startuptime
 	timer := time.NewTimer(BroadcastTimeout)
 	for {
 		select {
@@ -153,43 +272,45 @@ func udpBroadcasterProc(conn *net.UDPConn, resp chan uptime.Uptime) {
 				log.Fatal(err)
 			}
 			resp <- newuptime
-			msg := UptimeBytes(newuptime)
-			timer = time.NewTimer(BroadcastTimeout)
-			_, e := conn.Write(msg)
-			if e != nil {
-				continue // TODO: errors!
+			if !noudp {
+				udptrigger <- newuptime
 			}
+			if !notcp {
+				tcptrigger <- newuptime
+			}
+			timer = time.NewTimer(BroadcastTimeout)
 		}
 	}
 }
 
-func udpBroadcaster(straddr string) (chan uptime.Uptime, error) {
+func Broadcaster(mcastaddr string, tcpport string) (chan uptime.Uptime, error) {
 	resp := make(chan uptime.Uptime)
-	addr, err := net.ResolveUDPAddr("udp", straddr)
-	if err != nil {
-		return resp, err
-	}
-	conn, err := net.DialUDP("udp", nil, addr)
-	if err != nil {
-		return resp, err
-	}
-	go udpBroadcasterProc(conn, resp)
+	go BroadcasterProc(mcastaddr, tcpport, resp)
 	return resp, nil
 }
 
-func UDPServer(d *Database) {
-	netchan, err := udpListener(MulticastAddr)
+func Server(d *Database) {
+	udpchan, err := udpListener(MulticastAddr)
 	if err != nil {
 		log.Fatal(err)
 	}
-	mechan, err := udpBroadcaster(MulticastAddr)
+	tcpchan, err := tcpListener(TcpBroadcastPort)
+	if err != nil {
+		log.Fatal(err)
+	}
+	mechan, err := Broadcaster(MulticastAddr, TcpBroadcastPort)
 	if err != nil {
 		log.Fatal(err)
 	}
 	for {
 		select {
-		case neighbour_uptime := <-netchan:
-			e := d.AddHost(neighbour_uptime.Hostname, neighbour_uptime)
+		case udp_neighbour_uptime := <-udpchan:
+			e := d.AddHost(udp_neighbour_uptime.Hostname, udp_neighbour_uptime)
+			if e != nil {
+				log.Fatal(e)
+			}
+		case tcp_neighbour_uptime := <-tcpchan:
+			e := d.AddHost(tcp_neighbour_uptime.Hostname, tcp_neighbour_uptime)
 			if e != nil {
 				log.Fatal(e)
 			}

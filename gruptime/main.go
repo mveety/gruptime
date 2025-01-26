@@ -6,6 +6,15 @@ import (
 	"github.com/mveety/gruptime/internal/uptime"
 	"log"
 	"os"
+	"bufio"
+)
+
+var (
+	startserver bool   = false
+	noudp       bool   = false
+	notcp       bool   = false
+	configfile  string = "/usr/local/etc/gruptime.conf"
+	peers       []string
 )
 
 func printUptime(u uptime.Uptime) {
@@ -28,15 +37,48 @@ func servermain() {
 	db := initUptimedb()
 	log.Print("starting tcp server")
 	go TCPServer(db)
-	log.Print("starting udp multicast server")
-	UDPServer(db)
+	log.Print("starting multicast server")
+	Server(db)
+}
+
+func readConfigfile(file string) ([]string, int) {
+	var tmp []string
+	fd, err := os.Open(file)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer fd.Close()
+	i := 0
+	scanner := bufio.NewScanner(fd)
+	for scanner.Scan() {
+		line := scanner.Text()
+		tmp = append(tmp, line)
+		i++
+	}
+	return tmp, i
 }
 
 func main() {
-	startserver := flag.Bool("daemon", false, "run as gruptime daemon")
+	var n int
+	flag.BoolVar(&startserver, "daemon", false, "run as gruptime daemon")
+	flag.BoolVar(&noudp, "noudp", false, "disable udp communication")
+	flag.BoolVar(&notcp, "notcp", false, "disable tcp communication")
+	flag.StringVar(&configfile, "config", "/usr/local/etc/gcruptime.conf", "configuration file")
 
 	flag.Parse()
-	if *startserver {
+	if startserver && notcp && noudp {
+		log.Fatal("error: must start either tcp or udp server");
+	}
+
+	peers, n = readConfigfile(configfile)
+	log.Printf("found %d hosts", n)
+	if len(peers) > 0 {
+		for _, s := range peers {
+			log.Print(s)
+		}
+	}
+
+	if startserver {
 		servermain()
 	} else {
 		clientmain()
