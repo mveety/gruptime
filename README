@@ -1,0 +1,6 @@
+Bare-bones clone of ruptime
+
+usage:
+	run gruptime server: gruptime -daemon
+	run the clent: gruptime
+
