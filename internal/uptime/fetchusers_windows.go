@@ -3,7 +3,6 @@
 
 package uptime
 
-func nusers int {
+func nusers() int {
 	return 0
 }
-
