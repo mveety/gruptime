@@ -7,6 +7,7 @@ import (
 	"math"
 	"net"
 	"time"
+	"errors"
 )
 
 const (
@@ -16,6 +17,7 @@ const (
 )
 
 var (
+	ProtoVersion byte = 3
 	UpdateTimeout    = time.Duration(HostTimeout) * time.Second // 8 minutes
 	BroadcastTimeout = UpdateTimeout / 4
 	BroadcastTTL     = 2
@@ -29,6 +31,8 @@ func OS2Byte(os string) byte {
 		return 2
 	case "Windows":
 		return 3
+	case "Plan 9":
+		return 9
 	default:
 		return 254
 	}
@@ -42,6 +46,8 @@ func Byte2OS(osbyte byte) string {
 		return "Linux"
 	case 3:
 		return "Windows"
+	case 9:
+		return "Plan 9"
 	case 254:
 		return "Unknown"
 	default:
@@ -49,18 +55,10 @@ func Byte2OS(osbyte byte) string {
 	}
 }
 
-// size: 0
-// OS: 1
-// uptime: OS +8
-// Hostname: uptime +len(Hostname)
-// load1: Hostname +8
-// load5: load1 +8
-// load15 load5 +8
-
 func UptimeBytes(u uptime.Uptime) []byte {
 	hostbytes := []byte(u.Hostname)
-	hostlen := len(hostbytes) // size, os, uptime, loads
-	buf := make([]byte, hostlen+1+1+8+8+8+8)
+	hostlen := len(hostbytes) // size, os, uptime, loads, nusers
+	buf := make([]byte, hostlen+1+1+1+8+8+8+8+8)
 	conv := make([]byte, 8)
 	binary.BigEndian.PutUint64(conv, uint64(u.Time))
 	load1bits := math.Float64bits(u.Load1)
@@ -72,31 +70,39 @@ func UptimeBytes(u uptime.Uptime) []byte {
 	load15bits := math.Float64bits(u.Load15)
 	load15conv := make([]byte, 8)
 	binary.BigEndian.PutUint64(load15conv, load15bits)
+	nusersconv := make([]byte, 8)
+	binary.BigEndian.PutUint64(nusersconv, u.NUsers)
 	msglen := byte(len(buf))
 	buf[0] = msglen
 	buf[1] = OS2Byte(u.OS)
-	copy(buf[2:10], conv)
-	copy(buf[10:10+hostlen], hostbytes)
-	copy(buf[10+hostlen:10+hostlen+8], load1conv)
-	copy(buf[10+hostlen+8:10+hostlen+16], load5conv)
-	copy(buf[10+hostlen+16:], load15conv)
+	buf[2] = ProtoVersion
+	copy(buf[3:11], conv)
+	copy(buf[11:11+hostlen], hostbytes)
+	copy(buf[11+hostlen:11+hostlen+8], load1conv)
+	copy(buf[11+hostlen+8:11+hostlen+16], load5conv)
+	copy(buf[11+hostlen+16:11+hostlen+24], load15conv)
+	copy(buf[11+hostlen+24:], nusersconv)
 	return buf
 }
 
-func BytesUptime(msgbuf []byte) uptime.Uptime {
+func BytesUptime(msgbuf []byte) (uptime.Uptime, error) {
 	msglen := msgbuf[0]
-	hostbuf := make([]byte, msglen-(1+1+8+8+8+8))
+	if msgbuf[2] < ProtoVersion {
+		return uptime.Uptime{}, errors.New("protocol too old")
+	}
+	hostbuf := make([]byte, msglen-(1+1+1+8+8+8+8+8))
 	hostlen := len(hostbuf)
 
-	uptime_seconds := int64(binary.BigEndian.Uint64(msgbuf[2:10]))
-	copy(hostbuf, msgbuf[10:10+hostlen])
+	uptime_seconds := int64(binary.BigEndian.Uint64(msgbuf[3:11]))
+	copy(hostbuf, msgbuf[11:11+hostlen])
 	hostname := string(hostbuf)
-	load1bits := binary.BigEndian.Uint64(msgbuf[10+hostlen : 10+hostlen+8])
+	load1bits := binary.BigEndian.Uint64(msgbuf[11+hostlen : 11+hostlen+8])
 	load1 := math.Float64frombits(load1bits)
-	load5bits := binary.BigEndian.Uint64(msgbuf[10+hostlen+8 : 10+hostlen+16])
+	load5bits := binary.BigEndian.Uint64(msgbuf[11+hostlen+8 : 11+hostlen+16])
 	load5 := math.Float64frombits(load5bits)
-	load15bits := binary.BigEndian.Uint64(msgbuf[10+hostlen+16:])
+	load15bits := binary.BigEndian.Uint64(msgbuf[11+hostlen+16 : 11+hostlen+24])
 	load15 := math.Float64frombits(load15bits)
+	nusers := binary.BigEndian.Uint64(msgbuf[11+hostlen+24:])
 	return uptime.Uptime{
 		Hostname: hostname,
 		OS:       Byte2OS(msgbuf[1]),
@@ -104,7 +110,8 @@ func BytesUptime(msgbuf []byte) uptime.Uptime {
 		Load1:    load1,
 		Load5:    load5,
 		Load15:   load15,
-	}
+		NUsers:   nusers,
+	}, nil
 }
 
 func udpListenerProc(conn *net.UDPConn, resp chan uptime.Uptime) {
@@ -124,7 +131,11 @@ func udpListenerProc(conn *net.UDPConn, resp chan uptime.Uptime) {
 		if verbose {
 			log.Printf("got udp message from %s", addr.String())
 		}
-		newuptime := BytesUptime(buf[:n])
+		newuptime, err := BytesUptime(buf[:n])
+		if err != nil {
+			log.Printf("error: udp message from %s is too old (%d < %d)", addr.String(), ProtoVersion, buf[2])
+			continue
+		}
 		resp <- newuptime
 	}
 }
@@ -165,7 +176,11 @@ func tcpListenerWorker(conn net.Conn, resp chan uptime.Uptime) {
 	if verbose {
 		log.Printf("got tcp message from %s", addr.String())
 	}
-	newuptime := BytesUptime(buf[:n])
+	newuptime, err := BytesUptime(buf[:n])
+	if err != nil {
+		log.Printf("error: tcp message from %s is too old (%d < %d)", addr.String(), ProtoVersion, buf[2])
+		return
+	}
 	resp <- newuptime
 }
 
@@ -273,6 +288,12 @@ func BroadcasterProc(mcast string, tcpport string, resp chan uptime.Uptime) {
 
 	startuptime, _ := uptime.GetUptime()
 	resp <- startuptime
+	if !noudp {
+		udptrigger <- startuptime
+	}
+	if !notcp {
+		tcptrigger <- startuptime
+	}
 	timer := time.NewTimer(BroadcastTimeout)
 	for {
 		select {

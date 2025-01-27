@@ -26,6 +26,7 @@ func printUptime(u uptime.Uptime) {
 	uptime_minutes := int(u.Time.Minutes()) % 60
 	uptime_seconds := int(u.Time.Seconds()) % 60
 	var uptime string
+	var nusers string
 	if uptime_days < 1 {
 		if uptime_hours < 1 {
 			if uptime_minutes < 1 {
@@ -39,7 +40,12 @@ func printUptime(u uptime.Uptime) {
 	} else {
 		uptime = fmt.Sprintf("%d+%02d:%02d", uptime_days, uptime_hours, uptime_minutes)
 	}
-	fmt.Printf("%-16s %-8s %s, load %.2f, %.2f, %.2f\n", u.Hostname, u.OS, uptime, u.Load1, u.Load5, u.Load15)
+	if u.NUsers == 1 {
+		nusers = fmt.Sprintf("%d user", u.NUsers)
+	} else {
+		nusers = fmt.Sprintf("%d users", u.NUsers)
+	}
+	fmt.Printf("%-16s %-8s %s, %s, load %.2f, %.2f, %.2f\n", u.Hostname, u.OS, uptime, nusers, u.Load1, u.Load5, u.Load15)
 }
 
 func clientmain() {

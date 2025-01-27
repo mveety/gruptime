@@ -13,7 +13,6 @@ func fetchusers() []string {
 
 	C.setutxent()
 
-
 	for ptr := C.getutxent(); ptr != nil; ptr = C.getutxent() {
 		ut = (*C.Utmpx)(ptr)
 		if ut.ut_type == C.USER_PROCESS {
@@ -31,4 +30,9 @@ func fetchusers() []string {
 		i++
 	}
 	return users
+}
+
+func nusers() int {
+	users := fetchusers()
+	return len(users)
 }

@@ -12,6 +12,7 @@ type Uptime struct {
 	Load1    float64
 	Load5    float64
 	Load15   float64
+	NUsers   uint64
 }
 
 type loadaverage struct {
@@ -43,5 +44,6 @@ func GetUptime() (Uptime, error) {
 		Load1:    l.load1,
 		Load5:    l.load5,
 		Load15:   l.load15,
+		NUsers:   uint64(nusers()),
 	}, nil
 }

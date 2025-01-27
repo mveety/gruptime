@@ -6,6 +6,11 @@ import (
 	"github.com/mveety/gruptime/internal/uptime"
 	"math"
 	"time"
+	"errors"
+)
+
+var (
+	ProtoVersion byte = 3
 )
 
 func OS2Byte(os string) byte {
@@ -38,16 +43,18 @@ func Byte2OS(osbyte byte) string {
 
 // size: 0
 // OS: 1
-// uptime: OS +8
+// version: 1
+// uptime: version +8
 // Hostname: uptime +len(Hostname)
 // load1: Hostname +8
 // load5: load1 +8
-// load15 load5 +8
+// load15: load5 +8
+// NUsers: load15 +8
 
 func UptimeBytes(u uptime.Uptime) []byte {
 	hostbytes := []byte(u.Hostname)
-	hostlen := len(hostbytes) // size, os, uptime, loads
-	buf := make([]byte, hostlen+1+1+8+8+8+8)
+	hostlen := len(hostbytes) // size, os, uptime, loads, nusers
+	buf := make([]byte, hostlen+1+1+1+8+8+8+8+8)
 	conv := make([]byte, 8)
 	binary.BigEndian.PutUint64(conv, uint64(u.Time))
 	load1bits := math.Float64bits(u.Load1)
@@ -59,31 +66,39 @@ func UptimeBytes(u uptime.Uptime) []byte {
 	load15bits := math.Float64bits(u.Load15)
 	load15conv := make([]byte, 8)
 	binary.BigEndian.PutUint64(load15conv, load15bits)
+	nusersconv := make([]byte, 8)
+	binary.BigEndian.PutUint64(nusersconv, u.NUsers)
 	msglen := byte(len(buf))
 	buf[0] = msglen
 	buf[1] = OS2Byte(u.OS)
-	copy(buf[2:10], conv)
-	copy(buf[10:10+hostlen], hostbytes)
-	copy(buf[10+hostlen:10+hostlen+8], load1conv)
-	copy(buf[10+hostlen+8:10+hostlen+16], load5conv)
-	copy(buf[10+hostlen+16:], load15conv)
+	buf[2] = ProtoVersion
+	copy(buf[3:11], conv)
+	copy(buf[11:11+hostlen], hostbytes)
+	copy(buf[11+hostlen:11+hostlen+8], load1conv)
+	copy(buf[11+hostlen+8:11+hostlen+16], load5conv)
+	copy(buf[11+hostlen+16:11+hostlen+24], load15conv)
+	copy(buf[11+hostlen+24:], nusersconv)
 	return buf
 }
 
-func BytesUptime(msgbuf []byte) uptime.Uptime {
+func BytesUptime(msgbuf []byte) (uptime.Uptime, error) {
 	msglen := msgbuf[0]
-	hostbuf := make([]byte, msglen-(1+1+8+8+8+8))
+	if msgbuf[2] < ProtoVersion {
+		return uptime.Uptime{}, errors.New("protocol too old")
+	}
+	hostbuf := make([]byte, msglen-(1+1+1+8+8+8+8+8))
 	hostlen := len(hostbuf)
 
-	uptime_seconds := int64(binary.BigEndian.Uint64(msgbuf[2:10]))
-	copy(hostbuf, msgbuf[10:10+hostlen])
+	uptime_seconds := int64(binary.BigEndian.Uint64(msgbuf[3:11]))
+	copy(hostbuf, msgbuf[11:11+hostlen])
 	hostname := string(hostbuf)
-	load1bits := binary.BigEndian.Uint64(msgbuf[10+hostlen : 10+hostlen+8])
+	load1bits := binary.BigEndian.Uint64(msgbuf[11+hostlen : 11+hostlen+8])
 	load1 := math.Float64frombits(load1bits)
-	load5bits := binary.BigEndian.Uint64(msgbuf[10+hostlen+8 : 10+hostlen+16])
+	load5bits := binary.BigEndian.Uint64(msgbuf[11+hostlen+8 : 11+hostlen+16])
 	load5 := math.Float64frombits(load5bits)
-	load15bits := binary.BigEndian.Uint64(msgbuf[10+hostlen+16:])
+	load15bits := binary.BigEndian.Uint64(msgbuf[11+hostlen+16 : 11+hostlen+24])
 	load15 := math.Float64frombits(load15bits)
+	nusers := binary.BigEndian.Uint64(msgbuf[11+hostlen+24:])
 	return uptime.Uptime{
 		Hostname: hostname,
 		OS:       Byte2OS(msgbuf[1]),
@@ -91,7 +106,8 @@ func BytesUptime(msgbuf []byte) uptime.Uptime {
 		Load1:    load1,
 		Load5:    load5,
 		Load15:   load15,
-	}
+		NUsers:   nusers,
+	}, nil
 }
 
 func main() {
@@ -99,9 +115,13 @@ func main() {
 	if err != nil {
 		panic("error getting uptime")
 	}
-	fmt.Printf("hostname: \"%v\", os: %v, uptime: %v, load: %v %v %v\n", utime.Hostname, utime.OS, utime.Time, utime.Load1, utime.Load5, utime.Load15)
+	fmt.Printf("hostname: \"%v\", os: %v, uptime: %v, load: %v %v %v, nusers: %v\n", utime.Hostname, utime.OS, utime.Time, utime.Load1, utime.Load5, utime.Load15, utime.NUsers)
 	utime_bytes := UptimeBytes(utime)
 	fmt.Printf("converted: %v\n", len(utime_bytes))
-	utime2 := BytesUptime(utime_bytes)
-	fmt.Printf("hostname: \"%v\", os: %v, uptime: %v, load: %v %v %v\n", utime2.Hostname, utime2.OS, utime2.Time, utime2.Load1, utime2.Load5, utime2.Load15)
+	utime2, err := BytesUptime(utime_bytes)
+	if err != nil {
+		fmt.Printf("error: %v\n", err)
+		return
+	}
+	fmt.Printf("hostname: \"%v\", os: %v, uptime: %v, load: %v %v %v, nusers: %v\n", utime2.Hostname, utime2.OS, utime2.Time, utime2.Load1, utime2.Load5, utime2.Load15, utime.NUsers)
 }
