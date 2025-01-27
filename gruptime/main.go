@@ -111,7 +111,7 @@ func main() {
 	flag.BoolVar(&startserver, "server", false, "run as gruptime server")
 	flag.BoolVar(&noudp, "noudp", false, "disable udp communication (server) ")
 	flag.BoolVar(&notcp, "notcp", false, "disable tcp communication (server)")
-	flag.StringVar(&configfile, "config", "/usr/local/etc/gcruptime.conf", "configuration file (server)")
+	flag.StringVar(&configfile, "config", "/usr/local/etc/gruptime.conf", "configuration file (server)")
 	flag.StringVar(&onlynode, "node", "", "node to query")
 	flag.BoolVar(&verbose, "verbose", false, "verbose output")
 	flag.BoolVar(&reloadconfig, "reload", false, "reload config file (client)")
