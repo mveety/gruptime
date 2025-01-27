@@ -1,5 +1,5 @@
-//go:build freebsd
-// +build freebsd
+//go:build freebsd || linux
+// +build freebsd linux
 
 package uptime
 
