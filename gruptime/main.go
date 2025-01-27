@@ -8,16 +8,20 @@ import (
 	"log"
 	"math"
 	"os"
+	"sync"
 )
 
 var (
-	startserver bool   = false
-	noudp       bool   = false
-	notcp       bool   = false
-	configfile  string = "/usr/local/etc/gruptime.conf"
-	peers       []string
-	onlynode    string = ""
-	verbose     bool   = false
+	startserver  bool   = false
+	noudp        bool   = false
+	notcp        bool   = false
+	configfile   string = "/usr/local/etc/gruptime.conf"
+	peers        []string
+	peerslock    *sync.RWMutex
+	onlynode     string = ""
+	verbose      bool   = false
+	reloadconfig bool   = false
+	noreloads    bool   = false
 )
 
 func printUptime(u uptime.Uptime) {
@@ -74,6 +78,9 @@ func servermain() {
 		log.Print("starting tcp server")
 	}
 	go TCPServer(db)
+	if !noreloads {
+		go ReloadServer()
+	}
 	if verbose {
 		log.Print("starting multicast server")
 	}
@@ -99,12 +106,16 @@ func readConfigfile(file string) ([]string, int) {
 
 func main() {
 	var n int
-	flag.BoolVar(&startserver, "daemon", false, "run as gruptime daemon")
-	flag.BoolVar(&noudp, "noudp", false, "disable udp communication")
-	flag.BoolVar(&notcp, "notcp", false, "disable tcp communication")
-	flag.StringVar(&configfile, "config", "/usr/local/etc/gcruptime.conf", "configuration file")
+	peerslock = new(sync.RWMutex)
+
+	flag.BoolVar(&startserver, "server", false, "run as gruptime server")
+	flag.BoolVar(&noudp, "noudp", false, "disable udp communication (server) ")
+	flag.BoolVar(&notcp, "notcp", false, "disable tcp communication (server)")
+	flag.StringVar(&configfile, "config", "/usr/local/etc/gcruptime.conf", "configuration file (server)")
 	flag.StringVar(&onlynode, "node", "", "node to query")
 	flag.BoolVar(&verbose, "verbose", false, "verbose output")
+	flag.BoolVar(&reloadconfig, "reload", false, "reload config file (client)")
+	flag.BoolVar(&noreloads, "noreloads", false, "disable config reloading (server)")
 
 	flag.Parse()
 	if startserver && notcp && noudp {
@@ -113,6 +124,7 @@ func main() {
 
 	if startserver {
 		if !notcp {
+			peerslock.Lock()
 			peers, n = readConfigfile(configfile)
 			if verbose {
 				log.Printf("found %d hosts", n)
@@ -122,9 +134,14 @@ func main() {
 					}
 				}
 			}
+			peerslock.Unlock()
 		}
 		servermain()
 	} else {
-		clientmain()
+		if reloadconfig {
+			SendReloadMsg()
+		} else {
+			clientmain()
+		}
 	}
 }

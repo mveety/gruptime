@@ -2,12 +2,12 @@ package main
 
 import (
 	"encoding/binary"
+	"errors"
 	"github.com/mveety/gruptime/internal/uptime"
 	"log"
 	"math"
 	"net"
 	"time"
-	"errors"
 )
 
 const (
@@ -17,10 +17,10 @@ const (
 )
 
 var (
-	ProtoVersion byte = 3
-	UpdateTimeout    = time.Duration(HostTimeout) * time.Second // 8 minutes
-	BroadcastTimeout = UpdateTimeout / 4
-	BroadcastTTL     = 2
+	ProtoVersion     byte = 3
+	UpdateTimeout         = time.Duration(HostTimeout) * time.Second // 8 minutes
+	BroadcastTimeout      = UpdateTimeout / 4
+	BroadcastTTL          = 2
 )
 
 func OS2Byte(os string) byte {
@@ -258,9 +258,11 @@ func tcpBroadcastProc(tcpport string, trigger chan uptime.Uptime) {
 	for {
 		select {
 		case newuptime := <-trigger:
+			peerslock.RLock()
 			for _, host := range peers {
 				go tcpBroadcastWorker(host+tcpport, newuptime)
 			}
+			peerslock.RUnlock()
 		}
 	}
 }

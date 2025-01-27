@@ -53,3 +53,48 @@ func TCPGetUptimes(addr string) ([]uptime.Uptime, error) {
 	}
 	return msg.Uptimes, nil
 }
+
+func ReloadProc(conn net.Conn) {
+	var n int
+	defer conn.Close()
+	peerslock.Lock()
+	peers, n = readConfigfile(configfile)
+	if verbose {
+		log.Printf("reload: found %d hosts", n)
+		if len(peers) > 0 {
+			for _, s := range peers {
+				log.Print(s)
+			}
+		}
+	}
+	peerslock.Unlock()
+}
+
+func ReloadServer() {
+	if notcp {
+		return
+	}
+	if verbose {
+		log.Print("starting reload server")
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:8785")
+	if err != nil {
+		log.Fatal(err)
+	}
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			log.Print(err)
+		}
+		go ReloadProc(conn)
+	}
+}
+
+func SendReloadMsg() error {
+	conn, err := net.Dial("tcp", "127.0.0.1:8785")
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	return nil
+}
