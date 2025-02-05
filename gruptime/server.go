@@ -3,11 +3,12 @@ package main
 import (
 	"encoding/binary"
 	"errors"
-	"github.com/mveety/gruptime/internal/uptime"
 	"log"
 	"math"
 	"net"
 	"time"
+
+	"github.com/mveety/gruptime/internal/uptime"
 )
 
 const (
@@ -213,14 +214,11 @@ func tcpListener(tcpport string) (chan uptime.Uptime, error) {
 
 func udpBroadcasterProc(conn *net.UDPConn, trigger chan uptime.Uptime) {
 	defer conn.Close()
-	for {
-		select {
-		case newuptime := <-trigger:
-			msg := UptimeBytes(newuptime)
-			_, e := conn.Write(msg)
-			if e != nil {
-				continue // TODO: errors!
-			}
+	for newuptime := range trigger {
+		msg := UptimeBytes(newuptime)
+		_, e := conn.Write(msg)
+		if e != nil {
+			continue
 		}
 	}
 }
@@ -255,15 +253,12 @@ func tcpBroadcastWorker(hostport string, u uptime.Uptime) {
 }
 
 func tcpBroadcastProc(tcpport string, trigger chan uptime.Uptime) {
-	for {
-		select {
-		case newuptime := <-trigger:
-			peerslock.RLock()
-			for _, host := range peers {
-				go tcpBroadcastWorker(host+tcpport, newuptime)
-			}
-			peerslock.RUnlock()
+	for newuptime := range trigger {
+		peerslock.RLock()
+		for _, host := range peers {
+			go tcpBroadcastWorker(host+tcpport, newuptime)
 		}
+		peerslock.RUnlock()
 	}
 }
 
