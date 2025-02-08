@@ -8,41 +8,36 @@ package uptime
 #include <stdint.h>
 #include <errno.h>
 
-time_t fbsd_uptime(void)
-{
-	struct timespec tp;
-	int r;
+typedef struct timespec Timespec;
 
+void zero_errno(void) {
 	errno = 0;
-	if(clock_gettime(CLOCK_UPTIME, &tp) < 0){
-		switch(errno) {
-		case EINVAL:
-			return -2;
-		case EPERM:
-			return -3;
-		default:
-			return -1;
-		}
-	}
-	return tp.tv_sec;
+}
+
+int get_errno(void) {
+	return errno;
 }
 */
 import "C"
-import "errors"
-import "os"
-import "time"
+
+import (
+	"os"
+	"syscall"
+	"time"
+)
 
 func getuptime_seconds() (time.Duration, error) {
-	cr := C.fbsd_uptime()
-	r := int64(cr)
-	switch r {
-	default:
-		return time.Duration(r) * time.Second, nil
-	case -1:
-		return 0, errors.New("unknown error")
-	case -2:
-		return 0, os.ErrInvalid
-	case -3:
-		return 0, os.ErrPermission
+	var ts C.Timespec
+
+	C.zero_errno()
+	if C.clock_gettime(C.CLOCK_UPTIME, &ts) < 0 {
+		errno := syscall.Errno(C.get_errno())
+		switch errno {
+		case syscall.EINVAL:
+			return time.Duration(0), os.ErrInvalid
+		case syscall.EPERM:
+			return time.Duration(0), os.ErrPermission
+		}
 	}
+	return time.Duration(int64(ts.tv_sec)) * time.Second, nil
 }
