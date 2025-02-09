@@ -11,11 +11,11 @@ import (
 var _getTickCount64 = syscall.NewLazyDLL("kernel32.dll").NewProc("GetTickCount64")
 
 func GetTickCount64() (int64, error) {
-	getticks, _, err := _getTickCount64()
-	if errno, ok := err.(syscall.Errno); ok != nil || errno != 0 {
-		return time.Duration(0), err
+	getticks, _, err := _getTickCount64.Call()
+	if errno, ok := err.(syscall.Errno); !ok || errno != 0 {
+		return 0, err
 	}
-	return getticks, nil
+	return int64(getticks), nil
 }
 
 func getuptime_seconds() (time.Duration, error) {
