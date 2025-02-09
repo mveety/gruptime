@@ -35,8 +35,7 @@ func managerproc(man *TimerManager) {
 				alarm.control <- updatemsg.time
 				updatemsg.res <- 0
 			} else {
-				newalarm := new(Alarm)
-				*newalarm = Alarm{
+				newalarm := &Alarm{
 					Hostname: updatemsg.Hostname,
 					control:  make(chan int),
 					cancel:   make(chan int),
@@ -71,10 +70,7 @@ func timerproc(alarm *Alarm) {
 	var timer *time.Timer = nil
 	control := alarm.control
 	cancel := alarm.cancel
-	select {
-	case firstinterval := <-control:
-		timer = time.NewTimer(time.Duration(firstinterval) * time.Second)
-	}
+	timer = time.NewTimer(time.Duration(<-control) * time.Second)
 	for {
 		select {
 		case newinterval := <-control:
@@ -83,7 +79,7 @@ func timerproc(alarm *Alarm) {
 			//	timer.Stop()
 			//}
 			timer = time.NewTimer(time.Duration(newinterval) * time.Second)
-			//defer timer.Stop()
+			// defer timer.Stop()
 		case <-cancel:
 			timer.Stop()
 			return
@@ -95,15 +91,14 @@ func timerproc(alarm *Alarm) {
 }
 
 func NewTimerManager() *TimerManager {
-	newman := new(TimerManager)
-	*newman = TimerManager{
+	newman := TimerManager{
 		Update:     make(chan Timer),
 		Deadhosts:  make(chan string),
 		Cancelhost: make(chan string),
 		Cancel:     make(chan int),
 	}
-	go managerproc(newman)
-	return newman
+	go managerproc(&newman)
+	return &newman
 }
 
 func (tm *TimerManager) RegisterHost(host string, time int) int {

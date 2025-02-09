@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+
 	"github.com/mveety/gruptime/internal/uptime"
 )
 
@@ -39,12 +40,13 @@ type Database struct {
 }
 
 func initUptimedb() *Database {
-	newdb := new(Database)
-	newdb.data = make(map[string]uptime.Uptime)
-	newdb.commchan = make(chan DbMessage)
-	newdb.timers = NewTimerManager()
-	go dbproc(newdb)
-	return newdb
+	newdb := Database{
+		data:     make(map[string]uptime.Uptime),
+		commchan: make(chan DbMessage),
+		timers:   NewTimerManager(),
+	}
+	go dbproc(&newdb)
+	return &newdb
 }
 
 func (d *Database) handlemessage(msg DbMessage) {
