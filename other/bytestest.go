@@ -21,6 +21,8 @@ func OS2Byte(os string) byte {
 		return 2
 	case "Windows":
 		return 3
+	case "Plan 9":
+		return 9
 	default:
 		return 254
 	}
@@ -34,6 +36,8 @@ func Byte2OS(osbyte byte) string {
 		return "Linux"
 	case 3:
 		return "Windows"
+	case 9:
+		return "Plan 9"
 	case 254:
 		return "Unknown"
 	default:
@@ -113,7 +117,7 @@ func BytesUptime(msgbuf []byte) (uptime.Uptime, error) {
 func main() {
 	utime, err := uptime.GetUptime()
 	if err != nil {
-		panic("error getting uptime")
+		panic(err)
 	}
 	fmt.Printf("hostname: \"%v\", os: %v, uptime: %v, load: %v %v %v, nusers: %v\n", utime.Hostname, utime.OS, utime.Time, utime.Load1, utime.Load5, utime.Load15, utime.NUsers)
 	utime_bytes := UptimeBytes(utime)
