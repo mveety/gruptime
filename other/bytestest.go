@@ -21,6 +21,12 @@ func OS2Byte(os string) byte {
 		return 2
 	case "Windows":
 		return 3
+	case "OpenVMS":
+		return 4
+	case "OpenBSD":
+		return 5
+	case "NetBSD":
+		return 6
 	case "Plan 9":
 		return 9
 	default:
@@ -36,12 +42,16 @@ func Byte2OS(osbyte byte) string {
 		return "Linux"
 	case 3:
 		return "Windows"
+	case 4:
+		return "OpenVMS"
+	case 5:
+		return "OpenBSD"
+	case 6:
+		return "NetBSD"
 	case 9:
 		return "Plan 9"
-	case 254:
-		return "Unknown"
 	default:
-		return "invalid"
+		return "Unknown"
 	}
 }
 
