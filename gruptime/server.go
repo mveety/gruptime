@@ -24,47 +24,7 @@ var (
 	BroadcastTTL          = 2
 )
 
-func OS2Byte(os string) byte {
-	switch os {
-	case "FreeBSD":
-		return 1
-	case "Linux":
-		return 2
-	case "Windows":
-		return 3
-	case "OpenVMS":
-		return 4
-	case "OpenBSD":
-		return 5
-	case "NetBSD":
-		return 6
-	case "Plan 9":
-		return 9
-	default:
-		return 254
-	}
-}
 
-func Byte2OS(osbyte byte) string {
-	switch osbyte {
-	case 1:
-		return "FreeBSD"
-	case 2:
-		return "Linux"
-	case 3:
-		return "Windows"
-	case 4:
-		return "OpenVMS"
-	case 5:
-		return "OpenBSD"
-	case 6:
-		return "NetBSD"
-	case 9:
-		return "Plan 9"
-	default:
-		return "Unknown"
-	}
-}
 
 func UptimeBytes(u uptime.Uptime) []byte {
 	hostbytes := []byte(u.Hostname)
@@ -85,7 +45,7 @@ func UptimeBytes(u uptime.Uptime) []byte {
 	binary.BigEndian.PutUint64(nusersconv, u.NUsers)
 	msglen := byte(len(buf))
 	buf[0] = msglen
-	buf[1] = OS2Byte(u.OS)
+	buf[1] = uptime.OS2Byte(u.OS)
 	buf[2] = ProtoVersion
 	copy(buf[3:11], conv)
 	copy(buf[11:11+hostlen], hostbytes)
@@ -116,7 +76,7 @@ func BytesUptime(msgbuf []byte) (uptime.Uptime, error) {
 	nusers := binary.BigEndian.Uint64(msgbuf[11+hostlen+24:])
 	return uptime.Uptime{
 		Hostname: hostname,
-		OS:       Byte2OS(msgbuf[1]),
+		OS:       uptime.Byte2OS(msgbuf[1]),
 		Time:     time.Duration(uptime_seconds),
 		Load1:    load1,
 		Load5:    load5,
