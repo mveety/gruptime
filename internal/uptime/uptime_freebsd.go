@@ -24,10 +24,10 @@ import "C"
 
 import (
 	"golang.org/x/sys/unix"
-	"unsafe"
 	"os"
 	"syscall"
 	"time"
+	"unsafe"
 )
 
 type load_sysctl struct {

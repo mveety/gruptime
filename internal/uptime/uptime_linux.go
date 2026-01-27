@@ -10,8 +10,8 @@ import "C"
 import (
 	"errors"
 	"fmt"
-	"os"
 	"golang.org/x/sys/unix"
+	"os"
 	"time"
 )
 

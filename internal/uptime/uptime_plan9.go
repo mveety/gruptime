@@ -4,16 +4,16 @@
 package uptime
 
 import (
-	"os"
 	"fmt"
+	"os"
 	"strconv"
 	"time"
 )
 
-func crapaverage() (*loadaverage) {
+func crapaverage() *loadaverage {
 	return &loadaverage{
-		load1: 9.0,
-		load5: 9.0,
+		load1:  9.0,
+		load5:  9.0,
 		load15: 9.0,
 	}
 }
@@ -36,8 +36,8 @@ func getload() (*loadaverage, error) {
 		return crapaverage(), err
 	}
 	return &loadaverage{
-		load1: float64(data[7]) / float64(ncpu*1000),
-		load5: 0,
+		load1:  float64(data[7]) / float64(ncpu*1000),
+		load5:  0,
 		load15: 0,
 	}, nil
 }
