@@ -24,8 +24,6 @@ var (
 	BroadcastTTL          = 2
 )
 
-
-
 func UptimeBytes(u uptime.Uptime) []byte {
 	hostbytes := []byte(u.Hostname)
 	hostlen := len(hostbytes) // size, os, uptime, loads, nusers
