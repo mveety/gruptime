@@ -4,11 +4,12 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"github.com/mveety/gruptime/internal/uptime"
 	"log"
 	"math"
 	"os"
 	"sync"
+
+	"github.com/mveety/gruptime/internal/uptime"
 )
 
 var (
@@ -22,6 +23,7 @@ var (
 	verbose      bool   = false
 	reloadconfig bool   = false
 	noreloads    bool   = false
+	tcpbind      string = ""
 )
 
 func printUptime(u uptime.Uptime) {
@@ -116,6 +118,7 @@ func main() {
 	flag.BoolVar(&verbose, "verbose", false, "verbose output")
 	flag.BoolVar(&reloadconfig, "reload", false, "reload config file (client)")
 	flag.BoolVar(&noreloads, "noreloads", false, "disable config reloading (server)")
+	flag.StringVar(&tcpbind, "tcpbind", "0.0.0.0", "tcp address to bind to")
 
 	flag.Parse()
 	if startserver && notcp && noudp {

@@ -214,7 +214,7 @@ func tcpListener(tcpport string) (chan uptime.Uptime, error) {
 	if verbose {
 		log.Print("starting tcp \"multicast\"")
 	}
-	ln, err := net.Listen("tcp", "0.0.0.0"+tcpport)
+	ln, err := net.Listen("tcp", tcpbind+tcpport)
 	if err != nil {
 		return resp, err
 	}
