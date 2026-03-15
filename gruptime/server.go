@@ -112,6 +112,7 @@ func udpListenerProc(conn *net.UDPConn, resp chan uptime.Uptime) {
 }
 
 func udpListener(straddr string) (chan uptime.Uptime, error) {
+	var iface *net.Interface = nil
 	resp := make(chan uptime.Uptime)
 	if noudp {
 		return resp, nil
@@ -123,7 +124,14 @@ func udpListener(straddr string) (chan uptime.Uptime, error) {
 	if err != nil {
 		return resp, err
 	}
-	conn, err := net.ListenMulticastUDP("udp", nil, addr)
+	if udpiface != "" {
+		var err error
+		iface, err = net.InterfaceByName(udpiface)
+		if err != nil {
+			return resp, err
+		}
+	}
+	conn, err := net.ListenMulticastUDP("udp", iface, addr)
 	if err != nil {
 		return resp, err
 	}
