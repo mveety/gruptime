@@ -27,6 +27,7 @@ var (
 	tcpbind      string = ""
 	getversion   bool   = false
 	udpiface     string = ""
+	printnodes   bool   = false
 )
 
 func printUptime(u uptime.Uptime) {
@@ -58,23 +59,42 @@ func printUptime(u uptime.Uptime) {
 }
 
 func clientmain() {
+	defer os.Exit(0)
 	uptimes, err := TCPGetUptimes("127.0.0.1")
 	if err != nil {
 		fmt.Printf("error: unable to connect to local daemon: %v\n", err)
+		return
+	}
+
+	if printnodes {
+		start := true
+		for _, u := range uptimes {
+			if start {
+				fmt.Printf("%s", u.Hostname)
+				start = false
+			} else {
+				fmt.Printf(" %s", u.Hostname)
+			}
+		}
+		fmt.Printf("\n")
+		return
 	}
 
 	if onlynode == "" {
 		for _, u := range uptimes {
 			printUptime(u)
 		}
-	} else {
-		for _, u := range uptimes {
-			if u.Hostname == onlynode {
-				printUptime(u)
-			}
+		return
+	}
+
+	for _, u := range uptimes {
+		if u.Hostname == onlynode {
+			printUptime(u)
+			return
 		}
 	}
-	os.Exit(0)
+	fmt.Printf("error: node \"%s\" not known!\n", onlynode)
+	os.Exit(-1)
 }
 
 func servermain() {
@@ -135,6 +155,7 @@ func main() {
 	flag.StringVar(&tcpbind, "bind", "0.0.0.0", "tcp address to bind to")
 	flag.BoolVar(&getversion, "version", false, "print version and exit")
 	flag.StringVar(&udpiface, "udpiface", "", "multicast on this interface")
+	flag.BoolVar(&printnodes, "nodes", false, "print a list of known nodes instead of uptimes")
 
 	flag.Parse()
 
