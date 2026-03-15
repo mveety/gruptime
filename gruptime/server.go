@@ -2,18 +2,20 @@ package main
 
 import (
 	"encoding/binary"
-	"errors"
+	"fmt"
 	"log"
 	"math"
 	"net"
 	"time"
 
 	"github.com/mveety/gruptime/internal/uptime"
+	"golang.org/x/net/ipv4"
 )
 
 const (
-	MulticastAddr    = "239.77.86.0:3825" // 239.M.V.0 :)
-	TcpBroadcastPort = ":3826"
+	MulticastAddr    = "239.77.86.0" // 239.M.V.0 :)
+	MulticastPort    = ":3825"
+	TCPBroadcastPort = ":3826"
 	ReadBuffer       = 1024 // should be big enough
 )
 
@@ -56,13 +58,17 @@ func UptimeBytes(u uptime.Uptime) []byte {
 
 func BytesUptime(msgbuf []byte) (uptime.Uptime, error) {
 	msglen := msgbuf[0]
+
+	if int(msglen) != len(msgbuf) {
+		return uptime.Uptime{}, fmt.Errorf("message wrong size: is %d should be %d)", len(msgbuf), msglen)
+	}
 	if msgbuf[2] < ProtoVersion {
-		return uptime.Uptime{}, errors.New("protocol too old")
+		return uptime.Uptime{}, fmt.Errorf("protocol too old (%d < %d)", ProtoVersion, msgbuf[2])
 	}
 	hostbuf := make([]byte, msglen-(1+1+1+8+8+8+8+8))
 	hostlen := len(hostbuf)
 
-	uptime_seconds := int64(binary.BigEndian.Uint64(msgbuf[3:11]))
+	uptimeSeconds := int64(binary.BigEndian.Uint64(msgbuf[3:11]))
 	copy(hostbuf, msgbuf[11:11+hostlen])
 	hostname := string(hostbuf)
 	load1bits := binary.BigEndian.Uint64(msgbuf[11+hostlen : 11+hostlen+8])
@@ -75,7 +81,7 @@ func BytesUptime(msgbuf []byte) (uptime.Uptime, error) {
 	return uptime.Uptime{
 		Hostname: hostname,
 		OS:       uptime.Byte2OS(msgbuf[1]),
-		Time:     time.Duration(uptime_seconds),
+		Time:     time.Duration(uptimeSeconds),
 		Load1:    load1,
 		Load5:    load5,
 		Load15:   load15,
@@ -93,16 +99,12 @@ func udpListenerProc(conn *net.UDPConn, resp chan uptime.Uptime) {
 			log.Print("error reading UDP message")
 			continue // TODO: errors!
 		}
-		if n < int(buf[0]) {
-			log.Printf("error: malformed udp message from %s: is %d should be %d", addr.String(), n, int(buf[0]))
-			continue // not enough bytes for message
-		}
 		if verbose {
 			log.Printf("got udp message from %s", addr.String())
 		}
 		newuptime, err := BytesUptime(buf[:n])
 		if err != nil {
-			log.Printf("error: udp message from %s is too old (%d < %d)", addr.String(), ProtoVersion, buf[2])
+			log.Printf("error: udp message from %s: %s", addr.String(), err)
 			continue
 		}
 		resp <- newuptime
@@ -138,16 +140,12 @@ func tcpListenerWorker(conn net.Conn, resp chan uptime.Uptime) {
 		log.Print("error reading tcp message:", err)
 		return
 	}
-	if n < int(buf[0]) {
-		log.Printf("error: malformed tcp message: is %d should be %d", n, int(buf[0]))
-		return
-	}
 	if verbose {
 		log.Printf("got tcp message from %s", addr.String())
 	}
 	newuptime, err := BytesUptime(buf[:n])
 	if err != nil {
-		log.Printf("error: tcp message from %s is too old (%d < %d)", addr.String(), ProtoVersion, buf[2])
+		log.Printf("error: tcp message from %s: %s", addr.String(), err)
 		return
 	}
 	resp <- newuptime
@@ -192,13 +190,25 @@ func udpBroadcasterProc(conn *net.UDPConn, trigger chan uptime.Uptime) {
 }
 
 func udpBroadcaster(straddr string, trigger chan uptime.Uptime) error {
-	addr, err := net.ResolveUDPAddr("udp", straddr)
+	addr, err := net.ResolveUDPAddr("udp4", straddr)
 	if err != nil {
 		return err
 	}
-	conn, err := net.DialUDP("udp", nil, addr)
+	conn, err := net.DialUDP("udp4", nil, addr)
 	if err != nil {
 		return err
+	}
+	if udpiface != "" {
+		iface, err := net.InterfaceByName(udpiface)
+		if err != nil {
+			conn.Close()
+			return err
+		}
+		packconn := ipv4.NewPacketConn(conn)
+		if err := packconn.SetMulticastInterface(iface); err != nil {
+			conn.Close()
+			return err
+		}
 	}
 	go udpBroadcasterProc(conn, trigger)
 	return nil
@@ -286,32 +296,32 @@ func Broadcaster(mcastaddr string, tcpport string) (chan uptime.Uptime, error) {
 }
 
 func Server(d *Database) {
-	udpchan, err := udpListener(MulticastAddr)
+	udpchan, err := udpListener(MulticastAddr + MulticastPort)
 	if err != nil {
 		log.Fatal(err)
 	}
-	tcpchan, err := tcpListener(TcpBroadcastPort)
+	tcpchan, err := tcpListener(TCPBroadcastPort)
 	if err != nil {
 		log.Fatal(err)
 	}
-	mechan, err := Broadcaster(MulticastAddr, TcpBroadcastPort)
+	mechan, err := Broadcaster(MulticastAddr+MulticastPort, TCPBroadcastPort)
 	if err != nil {
 		log.Fatal(err)
 	}
 	for {
 		select {
-		case udp_neighbour_uptime := <-udpchan:
-			e := d.AddHost(udp_neighbour_uptime.Hostname, udp_neighbour_uptime)
+		case udpNeighbourUptime := <-udpchan:
+			e := d.AddHost(udpNeighbourUptime.Hostname, udpNeighbourUptime)
 			if e != nil {
 				log.Fatal(e)
 			}
-		case tcp_neighbour_uptime := <-tcpchan:
-			e := d.AddHost(tcp_neighbour_uptime.Hostname, tcp_neighbour_uptime)
+		case tcpNeighbourUptime := <-tcpchan:
+			e := d.AddHost(tcpNeighbourUptime.Hostname, tcpNeighbourUptime)
 			if e != nil {
 				log.Fatal(e)
 			}
-		case self_uptime := <-mechan:
-			e := d.AddHost(self_uptime.Hostname, self_uptime)
+		case myUptime := <-mechan:
+			e := d.AddHost(myUptime.Hostname, myUptime)
 			if e != nil {
 				log.Fatal(e)
 			}

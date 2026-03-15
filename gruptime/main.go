@@ -7,6 +7,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"runtime/debug"
 	"sync"
 
 	"github.com/mveety/gruptime/internal/uptime"
@@ -24,27 +25,29 @@ var (
 	reloadconfig bool   = false
 	noreloads    bool   = false
 	tcpbind      string = ""
+	getversion   bool   = false
+	udpiface     string = ""
 )
 
 func printUptime(u uptime.Uptime) {
-	uptime_days := int(math.Floor(u.Time.Hours()) / 24)
-	uptime_hours := int(u.Time.Hours()) % 24
-	uptime_minutes := int(u.Time.Minutes()) % 60
-	uptime_seconds := int(u.Time.Seconds()) % 60
+	uptimeDays := int(math.Floor(u.Time.Hours()) / 24)
+	uptimeHours := int(u.Time.Hours()) % 24
+	uptimeMinutes := int(u.Time.Minutes()) % 60
+	uptimeSeconds := int(u.Time.Seconds()) % 60
 	var uptime string
 	var nusers string
-	if uptime_days < 1 {
-		if uptime_hours < 1 {
-			if uptime_minutes < 1 {
-				uptime = fmt.Sprintf("%d seconds", uptime_seconds)
+	if uptimeDays < 1 {
+		if uptimeHours < 1 {
+			if uptimeMinutes < 1 {
+				uptime = fmt.Sprintf("%d seconds", uptimeSeconds)
 			} else {
-				uptime = fmt.Sprintf("%d minutes", uptime_minutes)
+				uptime = fmt.Sprintf("%d minutes", uptimeMinutes)
 			}
 		} else {
-			uptime = fmt.Sprintf("%2d:%02d", uptime_hours, uptime_minutes)
+			uptime = fmt.Sprintf("%2d:%02d", uptimeHours, uptimeMinutes)
 		}
 	} else {
-		uptime = fmt.Sprintf("%d+%02d:%02d", uptime_days, uptime_hours, uptime_minutes)
+		uptime = fmt.Sprintf("%d+%02d:%02d", uptimeDays, uptimeHours, uptimeMinutes)
 	}
 	if u.NUsers == 1 {
 		nusers = fmt.Sprintf("%d user", u.NUsers)
@@ -106,6 +109,17 @@ func readConfigfile(file string) ([]string, int) {
 	return tmp, i
 }
 
+func getGitCommit() string {
+	if buildinfo, ok := debug.ReadBuildInfo(); ok {
+		for _, s := range buildinfo.Settings {
+			if s.Key == "vcs.revision" {
+				return s.Value
+			}
+		}
+	}
+	return "(unknown)"
+}
+
 func main() {
 	var n int
 	peerslock = new(sync.RWMutex)
@@ -118,14 +132,21 @@ func main() {
 	flag.BoolVar(&verbose, "verbose", false, "verbose output")
 	flag.BoolVar(&reloadconfig, "reload", false, "reload config file (client)")
 	flag.BoolVar(&noreloads, "noreloads", false, "disable config reloading (server)")
-	flag.StringVar(&tcpbind, "tcpbind", "0.0.0.0", "tcp address to bind to")
+	flag.StringVar(&tcpbind, "bind", "0.0.0.0", "tcp address to bind to")
+	flag.BoolVar(&getversion, "version", false, "print version and exit")
+	flag.StringVar(&udpiface, "udpiface", "", "multicast on this interface")
 
 	flag.Parse()
+
 	if startserver && notcp && noudp {
 		log.Fatal("error: must start either tcp or udp server")
 	}
 
 	if startserver {
+		if verbose {
+			log.Printf("gruptime %v", getGitCommit())
+			log.Printf("protocol %v", int(ProtoVersion))
+		}
 		if !notcp {
 			peerslock.Lock()
 			peers, n = readConfigfile(configfile)
@@ -141,6 +162,10 @@ func main() {
 		}
 		servermain()
 	} else {
+		if getversion {
+			fmt.Printf("gruptime %v\ngruptime protocol %v\n", getGitCommit(), int(ProtoVersion))
+			os.Exit(0)
+		}
 		if reloadconfig {
 			SendReloadMsg()
 		} else {
