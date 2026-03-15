@@ -166,7 +166,7 @@ func main() {
 	if startserver {
 		if verbose {
 			log.Printf("gruptime %v", getGitCommit())
-			log.Printf("protocol %v", int(ProtoVersion))
+			log.Printf("protocol %v", int(uptime.ProtoVersion))
 		}
 		if !notcp {
 			peerslock.Lock()
@@ -184,7 +184,7 @@ func main() {
 		servermain()
 	} else {
 		if getversion {
-			fmt.Printf("gruptime %v\ngruptime protocol %v\n", getGitCommit(), int(ProtoVersion))
+			fmt.Printf("gruptime %v\ngruptime protocol %v\n", getGitCommit(), int(uptime.ProtoVersion))
 			os.Exit(0)
 		}
 		if reloadconfig {

@@ -1,10 +1,7 @@
 package main
 
 import (
-	"encoding/binary"
-	"fmt"
 	"log"
-	"math"
 	"net"
 	"time"
 
@@ -20,74 +17,10 @@ const (
 )
 
 var (
-	ProtoVersion     byte = 3
-	UpdateTimeout         = time.Duration(HostTimeout) * time.Second // 8 minutes
-	BroadcastTimeout      = UpdateTimeout / 4
-	BroadcastTTL          = 2
+	UpdateTimeout    = time.Duration(HostTimeout) * time.Second // 8 minutes
+	BroadcastTimeout = UpdateTimeout / 4
+	BroadcastTTL     = 2
 )
-
-func UptimeBytes(u uptime.Uptime) []byte {
-	hostbytes := []byte(u.Hostname)
-	hostlen := len(hostbytes) // size, os, uptime, loads, nusers
-	buf := make([]byte, hostlen+1+1+1+8+8+8+8+8)
-	conv := make([]byte, 8)
-	binary.BigEndian.PutUint64(conv, uint64(u.Time))
-	load1bits := math.Float64bits(u.Load1)
-	load1conv := make([]byte, 8)
-	binary.BigEndian.PutUint64(load1conv, load1bits)
-	load5bits := math.Float64bits(u.Load5)
-	load5conv := make([]byte, 8)
-	binary.BigEndian.PutUint64(load5conv, load5bits)
-	load15bits := math.Float64bits(u.Load15)
-	load15conv := make([]byte, 8)
-	binary.BigEndian.PutUint64(load15conv, load15bits)
-	nusersconv := make([]byte, 8)
-	binary.BigEndian.PutUint64(nusersconv, u.NUsers)
-	msglen := byte(len(buf))
-	buf[0] = msglen
-	buf[1] = uptime.OS2Byte(u.OS)
-	buf[2] = ProtoVersion
-	copy(buf[3:11], conv)
-	copy(buf[11:11+hostlen], hostbytes)
-	copy(buf[11+hostlen:11+hostlen+8], load1conv)
-	copy(buf[11+hostlen+8:11+hostlen+16], load5conv)
-	copy(buf[11+hostlen+16:11+hostlen+24], load15conv)
-	copy(buf[11+hostlen+24:], nusersconv)
-	return buf
-}
-
-func BytesUptime(msgbuf []byte) (uptime.Uptime, error) {
-	msglen := msgbuf[0]
-
-	if int(msglen) != len(msgbuf) {
-		return uptime.Uptime{}, fmt.Errorf("message wrong size: is %d should be %d)", len(msgbuf), msglen)
-	}
-	if msgbuf[2] < ProtoVersion {
-		return uptime.Uptime{}, fmt.Errorf("protocol too old (%d < %d)", ProtoVersion, msgbuf[2])
-	}
-	hostbuf := make([]byte, msglen-(1+1+1+8+8+8+8+8))
-	hostlen := len(hostbuf)
-
-	uptimeSeconds := int64(binary.BigEndian.Uint64(msgbuf[3:11]))
-	copy(hostbuf, msgbuf[11:11+hostlen])
-	hostname := string(hostbuf)
-	load1bits := binary.BigEndian.Uint64(msgbuf[11+hostlen : 11+hostlen+8])
-	load1 := math.Float64frombits(load1bits)
-	load5bits := binary.BigEndian.Uint64(msgbuf[11+hostlen+8 : 11+hostlen+16])
-	load5 := math.Float64frombits(load5bits)
-	load15bits := binary.BigEndian.Uint64(msgbuf[11+hostlen+16 : 11+hostlen+24])
-	load15 := math.Float64frombits(load15bits)
-	nusers := binary.BigEndian.Uint64(msgbuf[11+hostlen+24:])
-	return uptime.Uptime{
-		Hostname: hostname,
-		OS:       uptime.Byte2OS(msgbuf[1]),
-		Time:     time.Duration(uptimeSeconds),
-		Load1:    load1,
-		Load5:    load5,
-		Load15:   load15,
-		NUsers:   nusers,
-	}, nil
-}
 
 func udpListenerProc(conn *net.UDPConn, resp chan uptime.Uptime) {
 	defer conn.Close()
@@ -102,7 +35,7 @@ func udpListenerProc(conn *net.UDPConn, resp chan uptime.Uptime) {
 		if verbose {
 			log.Printf("got udp message from %s", addr.String())
 		}
-		newuptime, err := BytesUptime(buf[:n])
+		newuptime, err := uptime.UptimeBuffer(buf[:n]).Uptime()
 		if err != nil {
 			log.Printf("error: udp message from %s: %s", addr.String(), err)
 			continue
@@ -151,7 +84,7 @@ func tcpListenerWorker(conn net.Conn, resp chan uptime.Uptime) {
 	if verbose {
 		log.Printf("got tcp message from %s", addr.String())
 	}
-	newuptime, err := BytesUptime(buf[:n])
+	newuptime, err := uptime.UptimeBuffer(buf[:n]).Uptime()
 	if err != nil {
 		log.Printf("error: tcp message from %s: %s", addr.String(), err)
 		return
@@ -189,7 +122,7 @@ func tcpListener(tcpport string) (chan uptime.Uptime, error) {
 func udpBroadcasterProc(conn *net.UDPConn, trigger chan uptime.Uptime) {
 	defer conn.Close()
 	for newuptime := range trigger {
-		msg := UptimeBytes(newuptime)
+		msg := newuptime.Bytes()
 		_, e := conn.Write(msg)
 		if e != nil {
 			continue
@@ -223,7 +156,7 @@ func udpBroadcaster(straddr string, trigger chan uptime.Uptime) error {
 }
 
 func tcpBroadcastWorker(hostport string, u uptime.Uptime) {
-	msg := UptimeBytes(u)
+	msg := u.Bytes()
 	conn, err := net.Dial("tcp", hostport)
 	if err != nil {
 		return
