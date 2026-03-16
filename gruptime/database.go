@@ -7,9 +7,10 @@ import (
 )
 
 var (
-	HostTimeout     = 480 // hosts timeout every 480 seconds
-	ErrDbNotStarted = errors.New("db not started")
-	ErrDbStarted    = errors.New("db already started")
+	HostTimeout     = 480   // hosts timeout every 480 seconds
+	PeerTimeout     = 86400 // peers timeout after a day
+	ErrDBNotStarted = errors.New("db not started")
+	ErrDBStarted    = errors.New("db already started")
 	ErrNoHost       = errors.New("host not found")
 )
 
@@ -17,51 +18,60 @@ const (
 	OpAddHost = iota
 	OpGetHost
 	OpRemoveHost
+	OpRemovePeer
 	OpGetAllHosts
+	OpGetAllPeers
 )
 
-type DbResponse struct {
-	err error
-	one uptime.Uptime
-	all []uptime.Uptime
+type DBResponse struct {
+	err   error
+	one   uptime.Uptime
+	all   []uptime.Uptime
+	peers map[string]bool
 }
 
-type DbMessage struct {
+type DBMessage struct {
 	op       int
-	resp     chan DbResponse
+	resp     chan DBResponse
 	hostname string
 	data     uptime.Uptime
 }
 
 type Database struct {
-	data     map[string]uptime.Uptime
-	commchan chan DbMessage
-	timers   *TimerManager
+	data       map[string]uptime.Uptime
+	peers      map[string]bool
+	commchan   chan DBMessage
+	timers     *TimerManager
+	peertimers *TimerManager
 }
 
 func initUptimedb() *Database {
 	newdb := Database{
-		data:     make(map[string]uptime.Uptime),
-		commchan: make(chan DbMessage),
-		timers:   NewTimerManager(),
+		data:       make(map[string]uptime.Uptime),
+		peers:      make(map[string]bool),
+		commchan:   make(chan DBMessage),
+		timers:     NewTimerManager(),
+		peertimers: NewTimerManager(),
 	}
 	go dbproc(&newdb)
 	return &newdb
 }
 
-func (d *Database) handlemessage(msg DbMessage) {
+func (d *Database) handlemessage(msg DBMessage) {
 	switch msg.op {
 	case OpAddHost:
 		d.data[msg.data.Hostname] = msg.data
 		d.timers.RegisterHost(msg.data.Hostname, HostTimeout)
-		msg.resp <- DbResponse{err: nil}
+		d.peers[msg.data.Hostname] = true
+		d.peertimers.RegisterHost(msg.data.Hostname, PeerTimeout)
+		msg.resp <- DBResponse{err: nil}
 		return
 	case OpGetHost:
 		uptime, exists := d.data[msg.hostname]
 		if exists {
-			msg.resp <- DbResponse{err: nil, one: uptime}
+			msg.resp <- DBResponse{err: nil, one: uptime}
 		} else {
-			msg.resp <- DbResponse{err: ErrNoHost}
+			msg.resp <- DBResponse{err: ErrNoHost}
 		}
 		return
 	case OpRemoveHost:
@@ -69,15 +79,28 @@ func (d *Database) handlemessage(msg DbMessage) {
 		if exists {
 			delete(d.data, msg.hostname)
 			d.timers.Cancelhost <- msg.hostname
-			msg.resp <- DbResponse{err: nil}
+			_, exists = d.peers[msg.hostname]
+			if exists {
+				d.peers[msg.hostname] = false
+			}
+			msg.resp <- DBResponse{err: nil}
 		} else {
-			msg.resp <- DbResponse{err: ErrNoHost}
+			msg.resp <- DBResponse{err: ErrNoHost}
 		}
 		return
+	case OpRemovePeer:
+		_, exists := d.peers[msg.hostname]
+		if exists {
+			delete(d.peers, msg.hostname)
+			d.peertimers.Cancelhost <- msg.hostname
+			msg.resp <- DBResponse{err: nil}
+		} else {
+			msg.resp <- DBResponse{err: ErrNoHost}
+		}
 	case OpGetAllHosts:
 		size := len(d.data)
 		if size < 1 {
-			msg.resp <- DbResponse{err: ErrNoHost}
+			msg.resp <- DBResponse{err: ErrNoHost}
 			return
 		}
 		uptimes := make([]uptime.Uptime, size)
@@ -86,7 +109,14 @@ func (d *Database) handlemessage(msg DbMessage) {
 			uptimes[i] = u
 			i++
 		}
-		msg.resp <- DbResponse{err: nil, all: uptimes}
+		msg.resp <- DBResponse{err: nil, all: uptimes}
+		return
+	case OpGetAllPeers:
+		size := len(d.peers)
+		if size < 1 {
+			msg.resp <- DBResponse{err: ErrNoHost}
+		}
+		msg.resp <- DBResponse{err: nil, peers: d.peers}
 		return
 	}
 }
@@ -101,14 +131,23 @@ func dbproc(db *Database) {
 			if exists {
 				delete(db.data, deadhost)
 			}
+			_, exists = db.peers[deadhost]
+			if exists {
+				db.peers[deadhost] = false
+			}
+		case deadpeer := <-db.peertimers.Deadhosts:
+			_, exists := db.peers[deadpeer]
+			if exists {
+				delete(db.data, deadpeer)
+			}
 		}
 	}
 }
 
 func (d *Database) AddHost(host string, ut uptime.Uptime) error {
-	msg := DbMessage{
+	msg := DBMessage{
 		op:       OpAddHost,
-		resp:     make(chan DbResponse),
+		resp:     make(chan DBResponse),
 		hostname: host,
 		data:     ut,
 	}
@@ -118,9 +157,9 @@ func (d *Database) AddHost(host string, ut uptime.Uptime) error {
 }
 
 func (d *Database) GetHost(host string) (uptime.Uptime, error) {
-	msg := DbMessage{
+	msg := DBMessage{
 		op:       OpGetHost,
-		resp:     make(chan DbResponse),
+		resp:     make(chan DBResponse),
 		hostname: host,
 	}
 	d.commchan <- msg
@@ -129,9 +168,20 @@ func (d *Database) GetHost(host string) (uptime.Uptime, error) {
 }
 
 func (d *Database) RemoveHost(host string) error {
-	msg := DbMessage{
+	msg := DBMessage{
 		op:       OpRemoveHost,
-		resp:     make(chan DbResponse),
+		resp:     make(chan DBResponse),
+		hostname: host,
+	}
+	d.commchan <- msg
+	res := <-msg.resp
+	return res.err
+}
+
+func (d *Database) RemovePeer(host string) error {
+	msg := DBMessage{
+		op:       OpRemovePeer,
+		resp:     make(chan DBResponse),
 		hostname: host,
 	}
 	d.commchan <- msg
@@ -140,11 +190,21 @@ func (d *Database) RemoveHost(host string) error {
 }
 
 func (d *Database) GetAllHosts() ([]uptime.Uptime, error) {
-	msg := DbMessage{
+	msg := DBMessage{
 		op:   OpGetAllHosts,
-		resp: make(chan DbResponse),
+		resp: make(chan DBResponse),
 	}
 	d.commchan <- msg
 	res := <-msg.resp
 	return res.all, res.err
+}
+
+func (d *Database) GetAllPeers() (map[string]bool, error) {
+	msg := DBMessage{
+		op:   OpGetAllPeers,
+		resp: make(chan DBResponse),
+	}
+	d.commchan <- msg
+	res := <-msg.resp
+	return res.peers, res.err
 }

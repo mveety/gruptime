@@ -28,6 +28,7 @@ var (
 	getversion   bool   = false
 	udpiface     string = ""
 	printnodes   bool   = false
+	allnodes     bool   = false
 )
 
 func printUptime(u uptime.Uptime) {
@@ -60,20 +61,37 @@ func printUptime(u uptime.Uptime) {
 
 func clientmain() {
 	defer os.Exit(0)
-	uptimes, err := TCPGetUptimes("127.0.0.1")
+	uptimes, allpeers, err := TCPGetUptimes("127.0.0.1")
 	if err != nil {
 		fmt.Printf("error: unable to connect to local daemon: %v\n", err)
 		return
 	}
 
+	uptimesmap := make(map[string]uptime.Uptime)
+	for _, u := range uptimes {
+		uptimesmap[u.Hostname] = u
+	}
+
 	if printnodes {
-		start := true
-		for _, u := range uptimes {
-			if start {
-				fmt.Printf("%s", u.Hostname)
-				start = false
-			} else {
-				fmt.Printf(" %s", u.Hostname)
+		if allnodes {
+			start := true
+			for k := range allpeers {
+				if start {
+					fmt.Printf("%s", k)
+					start = false
+				} else {
+					fmt.Printf(" %s", k)
+				}
+			}
+		} else {
+			start := true
+			for _, u := range uptimes {
+				if start {
+					fmt.Printf("%s", u.Hostname)
+					start = false
+				} else {
+					fmt.Printf(" %s", u.Hostname)
+				}
 			}
 		}
 		fmt.Printf("\n")
@@ -81,20 +99,32 @@ func clientmain() {
 	}
 
 	if onlynode == "" {
-		for _, u := range uptimes {
-			printUptime(u)
+		if allnodes {
+			for k := range allpeers {
+				if allpeers[k] {
+					printUptime(uptimesmap[k])
+				} else {
+					fmt.Printf("%-16s down\n", k)
+				}
+			}
+		} else {
+			for _, u := range uptimes {
+				printUptime(u)
+			}
 		}
 		return
 	}
 
-	for _, u := range uptimes {
-		if u.Hostname == onlynode {
-			printUptime(u)
-			return
-		}
+	status, exists := allpeers[onlynode]
+	if !exists {
+		fmt.Printf("error: node \"%s\" not known!\n", onlynode)
+		os.Exit(-1)
 	}
-	fmt.Printf("error: node \"%s\" not known!\n", onlynode)
-	os.Exit(-1)
+	if status {
+		printUptime(uptimesmap[onlynode])
+	} else {
+		fmt.Printf("%-16s down\n", onlynode)
+	}
 }
 
 func servermain() {
@@ -156,6 +186,7 @@ func main() {
 	flag.BoolVar(&getversion, "version", false, "print version and exit")
 	flag.StringVar(&udpiface, "udpiface", "", "multicast on this interface")
 	flag.BoolVar(&printnodes, "nodes", false, "print a list of known nodes instead of uptimes")
+	flag.BoolVar(&allnodes, "all", false, "print all known nodes")
 
 	flag.Parse()
 

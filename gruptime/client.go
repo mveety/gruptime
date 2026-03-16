@@ -2,13 +2,21 @@ package main
 
 import (
 	"encoding/gob"
-	"github.com/mveety/gruptime/internal/uptime"
+	"errors"
 	"log"
 	"net"
+
+	"github.com/mveety/gruptime/internal/uptime"
+)
+
+const (
+	ClientProtocolVersion = 2
 )
 
 type TcpMessage struct {
+	Proto   int
 	Uptimes []uptime.Uptime
+	Peers   map[string]bool
 }
 
 func TcpConnProc(db *Database, conn net.Conn) {
@@ -18,7 +26,11 @@ func TcpConnProc(db *Database, conn net.Conn) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	msg := TcpMessage{Uptimes: uptimes}
+	allpeers, err := db.GetAllPeers()
+	if err != nil {
+		log.Fatal(err)
+	}
+	msg := TcpMessage{Proto: ClientProtocolVersion, Uptimes: uptimes, Peers: allpeers}
 	encerr := encoder.Encode(&msg)
 	if encerr != nil {
 		log.Fatal(encerr)
@@ -39,19 +51,23 @@ func TCPServer(db *Database) {
 	}
 }
 
-func TCPGetUptimes(addr string) ([]uptime.Uptime, error) {
+func TCPGetUptimes(addr string) ([]uptime.Uptime, map[string]bool, error) {
 	var msg TcpMessage
 	var uptimes []uptime.Uptime
+	var errpeers map[string]bool
 	conn, err := net.Dial("tcp", addr+":8784")
 	if err != nil {
-		return uptimes, err
+		return uptimes, errpeers, err
 	}
 	decoder := gob.NewDecoder(conn)
 	decerr := decoder.Decode(&msg)
 	if decerr != nil {
-		return uptimes, decerr
+		return uptimes, errpeers, decerr
 	}
-	return msg.Uptimes, nil
+	if msg.Proto != ClientProtocolVersion {
+		return uptimes, errpeers, errors.New("server/client mismatch")
+	}
+	return msg.Uptimes, msg.Peers, nil
 }
 
 func ReloadProc(conn net.Conn) {
