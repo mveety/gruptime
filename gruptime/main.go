@@ -30,6 +30,7 @@ var (
 	printnodes   bool   = false
 	allnodes     bool   = false
 	showlifetime bool   = false
+	bcastall     bool   = false
 )
 
 func printUptime(u uptime.Uptime) {
@@ -198,6 +199,7 @@ func main() {
 	flag.BoolVar(&printnodes, "nodes", false, "print a list of known nodes instead of uptimes")
 	flag.BoolVar(&allnodes, "all", false, "print all known nodes")
 	flag.BoolVar(&showlifetime, "lifetimes", false, "show entry lifetimes")
+	flag.BoolVar(&bcastall, "broadcast", false, "Send known node info to peers")
 
 	flag.Parse()
 

@@ -186,7 +186,32 @@ func tcpBroadcaster(tcpport string, trigger chan uptime.Uptime) error {
 	return nil
 }
 
-func BroadcasterProc(mcast string, tcpport string, resp chan uptime.Uptime) {
+func dobroadcastall(db *Database, myhostname string, udpchan chan uptime.Uptime, tcpchan chan uptime.Uptime) {
+	uptimes, err := db.GetAllHosts()
+	if err != nil {
+		log.Printf("broadcaster: unable to get all nodes: %v", err)
+		return
+	}
+	for _, uptime := range uptimes {
+		if uptime.Hostname == myhostname {
+			continue
+		}
+		if uptime.Version < 4 {
+			continue
+		}
+		if verbose {
+			log.Printf("sending %v to peers", uptime)
+		}
+		if !noudp {
+			udpchan <- uptime
+		}
+		if !notcp {
+			tcpchan <- uptime
+		}
+	}
+}
+
+func BroadcasterProc(db *Database, mcast string, tcpport string, resp chan uptime.Uptime) {
 	udptrigger := make(chan uptime.Uptime)
 	tcptrigger := make(chan uptime.Uptime)
 	if !noudp {
@@ -227,14 +252,17 @@ func BroadcasterProc(mcast string, tcpport string, resp chan uptime.Uptime) {
 			if !notcp {
 				tcptrigger <- newuptime
 			}
+			if bcastall {
+				go dobroadcastall(db, newuptime.Hostname, udptrigger, tcptrigger)
+			}
 			timer = time.NewTimer(BroadcastTimeout)
 		}
 	}
 }
 
-func Broadcaster(mcastaddr string, tcpport string) (chan uptime.Uptime, error) {
+func Broadcaster(db *Database, mcastaddr string, tcpport string) (chan uptime.Uptime, error) {
 	resp := make(chan uptime.Uptime)
-	go BroadcasterProc(mcastaddr, tcpport, resp)
+	go BroadcasterProc(db, mcastaddr, tcpport, resp)
 	return resp, nil
 }
 
@@ -247,7 +275,7 @@ func Server(d *Database) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	mechan, err := Broadcaster(MulticastAddr+MulticastPort, TCPBroadcastPort)
+	mechan, err := Broadcaster(d, MulticastAddr+MulticastPort, TCPBroadcastPort)
 	if err != nil {
 		log.Fatal(err)
 	}
