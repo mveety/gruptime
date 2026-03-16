@@ -38,7 +38,7 @@ func udpListenerProc(conn *net.UDPConn, resp chan uptime.Uptime) {
 			continue
 		}
 		if verbose {
-			log.Printf("got udp message for %s from %s", newuptime.Hostname, addr.String())
+			log.Printf("got udp message for %s from %s: %v", newuptime.Hostname, addr.String(), newuptime)
 		}
 		resp <- newuptime
 	}
@@ -87,7 +87,7 @@ func tcpListenerWorker(conn net.Conn, resp chan uptime.Uptime) {
 		return
 	}
 	if verbose {
-		log.Printf("got tcp message for %s from %s", newuptime.Hostname, addr.String())
+		log.Printf("got tcp message for %s from %s: %v", newuptime.Hostname, addr.String(), newuptime)
 	}
 	resp <- newuptime
 }
@@ -241,7 +241,7 @@ func BroadcasterProc(db *Database, mcast string, tcpport string, resp chan uptim
 		select {
 		case <-timer.C:
 			newuptime, err := uptime.GetUptime()
-			startuptime.Lifetime = time.Duration(HostTimeout) * time.Second
+			newuptime.Lifetime = time.Duration(HostTimeout) * time.Second
 			if err != nil {
 				log.Fatal(err)
 			}
