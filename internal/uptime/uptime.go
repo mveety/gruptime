@@ -15,6 +15,7 @@ import (
 )
 
 type Uptime struct {
+	Version  int
 	Hostname string
 	OS       string
 	Time     time.Duration
@@ -22,6 +23,7 @@ type Uptime struct {
 	Load5    float64
 	Load15   float64
 	NUsers   uint64
+	Lifetime time.Duration
 }
 
 type loadaverage struct {
@@ -47,6 +49,7 @@ func GetUptime() (Uptime, error) {
 	}
 
 	return Uptime{
+		Version:  int(ProtoVersion),
 		Hostname: hostname,
 		OS:       getos(),
 		Time:     t,
@@ -54,6 +57,7 @@ func GetUptime() (Uptime, error) {
 		Load5:    l.load5,
 		Load15:   l.load15,
 		NUsers:   uint64(nusers()),
+		Lifetime: 0,
 	}, nil
 }
 

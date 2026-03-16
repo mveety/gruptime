@@ -2,6 +2,8 @@ package main
 
 import (
 	"errors"
+	"log"
+	"time"
 
 	"github.com/mveety/gruptime/internal/uptime"
 )
@@ -60,8 +62,22 @@ func initUptimedb() *Database {
 func (d *Database) handlemessage(msg DBMessage) {
 	switch msg.op {
 	case OpAddHost:
+		timeout := HostTimeout
+		if msg.data.Lifetime > 0 {
+			timeout = int(msg.data.Lifetime.Seconds())
+		} else {
+			msg.data.Lifetime = time.Duration(HostTimeout) * time.Second
+		}
+		endtime, err := d.timers.EndTime(msg.data.Hostname)
+		if err != nil && msg.data.Lifetime < time.Until(endtime) {
+			if verbose {
+				log.Printf("dropping shorter lived uptime for %s", msg.data.Hostname)
+			}
+			msg.resp <- DBResponse{err: nil}
+			return
+		}
 		d.data[msg.data.Hostname] = msg.data
-		d.timers.RegisterHost(msg.data.Hostname, HostTimeout)
+		d.timers.RegisterHost(msg.data.Hostname, timeout)
 		d.peers[msg.data.Hostname] = true
 		d.peertimers.RegisterHost(msg.data.Hostname, PeerTimeout)
 		msg.resp <- DBResponse{err: nil}
@@ -69,6 +85,11 @@ func (d *Database) handlemessage(msg DBMessage) {
 	case OpGetHost:
 		uptime, exists := d.data[msg.hostname]
 		if exists {
+			endtime, err := d.timers.EndTime(msg.hostname)
+			if err != nil {
+				panic(err)
+			}
+			uptime.Lifetime = time.Until(endtime)
 			msg.resp <- DBResponse{err: nil, one: uptime}
 		} else {
 			msg.resp <- DBResponse{err: ErrNoHost}
@@ -106,6 +127,11 @@ func (d *Database) handlemessage(msg DBMessage) {
 		uptimes := make([]uptime.Uptime, size)
 		i := 0
 		for _, u := range d.data {
+			endtime, err := d.timers.EndTime(u.Hostname)
+			if err != nil {
+				panic(err)
+			}
+			u.Lifetime = time.Until(endtime)
 			uptimes[i] = u
 			i++
 		}

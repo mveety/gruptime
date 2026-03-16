@@ -29,6 +29,7 @@ var (
 	udpiface     string = ""
 	printnodes   bool   = false
 	allnodes     bool   = false
+	showlifetime bool   = false
 )
 
 func printUptime(u uptime.Uptime) {
@@ -38,6 +39,7 @@ func printUptime(u uptime.Uptime) {
 	uptimeSeconds := int(u.Time.Seconds()) % 60
 	var uptime string
 	var nusers string
+	lifetimestr := ""
 	if uptimeDays < 1 {
 		if uptimeHours < 1 {
 			if uptimeMinutes < 1 {
@@ -56,7 +58,15 @@ func printUptime(u uptime.Uptime) {
 	} else {
 		nusers = fmt.Sprintf("%d users", u.NUsers)
 	}
-	fmt.Printf("%-16s %-8s %s, %s, load %.2f, %.2f, %.2f\n", u.Hostname, u.OS, uptime, nusers, u.Load1, u.Load5, u.Load15)
+	if showlifetime {
+		if u.Version > 3 {
+			lifetimestr = fmt.Sprintf("  (%v left)", u.Lifetime)
+		} else {
+			lifetimestr = "  (old version)"
+		}
+	}
+
+	fmt.Printf("%-16s %-8s %s, %s, load %.2f, %.2f, %.2f%s\n", u.Hostname, u.OS, uptime, nusers, u.Load1, u.Load5, u.Load15, lifetimestr)
 }
 
 func clientmain() {
@@ -187,6 +197,7 @@ func main() {
 	flag.StringVar(&udpiface, "udpiface", "", "multicast on this interface")
 	flag.BoolVar(&printnodes, "nodes", false, "print a list of known nodes instead of uptimes")
 	flag.BoolVar(&allnodes, "all", false, "print all known nodes")
+	flag.BoolVar(&showlifetime, "lifetimes", false, "show entry lifetimes")
 
 	flag.Parse()
 

@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	ClientProtocolVersion = 2
+	ClientProtocolVersion = 3
 )
 
 type TcpMessage struct {

@@ -32,13 +32,13 @@ func udpListenerProc(conn *net.UDPConn, resp chan uptime.Uptime) {
 			log.Print("error reading UDP message")
 			continue // TODO: errors!
 		}
-		if verbose {
-			log.Printf("got udp message from %s", addr.String())
-		}
 		newuptime, err := uptime.UptimeBuffer(buf[:n]).Uptime()
 		if err != nil {
 			log.Printf("error: udp message from %s: %s", addr.String(), err)
 			continue
+		}
+		if verbose {
+			log.Printf("got udp message for %s from %s", newuptime.Hostname, addr.String())
 		}
 		resp <- newuptime
 	}
@@ -81,13 +81,13 @@ func tcpListenerWorker(conn net.Conn, resp chan uptime.Uptime) {
 		log.Print("error reading tcp message:", err)
 		return
 	}
-	if verbose {
-		log.Printf("got tcp message from %s", addr.String())
-	}
 	newuptime, err := uptime.UptimeBuffer(buf[:n]).Uptime()
 	if err != nil {
 		log.Printf("error: tcp message from %s: %s", addr.String(), err)
 		return
+	}
+	if verbose {
+		log.Printf("got tcp message for %s from %s", newuptime.Hostname, addr.String())
 	}
 	resp <- newuptime
 }
@@ -203,6 +203,7 @@ func BroadcasterProc(mcast string, tcpport string, resp chan uptime.Uptime) {
 	}
 
 	startuptime, _ := uptime.GetUptime()
+	startuptime.Lifetime = time.Duration(HostTimeout) * time.Second
 	resp <- startuptime
 	if !noudp {
 		udptrigger <- startuptime
@@ -215,6 +216,7 @@ func BroadcasterProc(mcast string, tcpport string, resp chan uptime.Uptime) {
 		select {
 		case <-timer.C:
 			newuptime, err := uptime.GetUptime()
+			startuptime.Lifetime = time.Duration(HostTimeout) * time.Second
 			if err != nil {
 				log.Fatal(err)
 			}

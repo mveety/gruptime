@@ -1,7 +1,13 @@
 package main
 
 import (
+	"errors"
 	"time"
+)
+
+const (
+	TimerOpBad       = -1
+	TimerOpRemaining = iota
 )
 
 type Alarm struct {
@@ -9,6 +15,8 @@ type Alarm struct {
 	control  chan int
 	cancel   chan int
 	manager  chan string
+	info     chan time.Duration
+	endtime  time.Time
 }
 
 type Timer struct {
@@ -17,11 +25,24 @@ type Timer struct {
 	res      chan int
 }
 
+type TimerResponse struct {
+	op     int
+	time   time.Time
+	status error
+}
+
+type TimerRequest struct {
+	op    int
+	timer string
+	resp  chan TimerResponse
+}
+
 type TimerManager struct {
 	Update     chan Timer
 	Deadhosts  chan string
 	Cancelhost chan string
 	Cancel     chan int
+	Requests   chan TimerRequest
 }
 
 func managerproc(man *TimerManager) {
@@ -62,6 +83,28 @@ func managerproc(man *TimerManager) {
 				value.cancel <- 1
 			}
 			return
+		case req := <-man.Requests:
+			switch req.op {
+			default:
+				req.resp <- TimerResponse{
+					op:     TimerOpBad,
+					status: errors.New("bad request"),
+				}
+			case TimerOpRemaining:
+				alarm, exists := alarms[req.timer]
+				if !exists {
+					req.resp <- TimerResponse{
+						op:     TimerOpRemaining,
+						status: errors.New("timer missing"),
+					}
+				} else {
+					req.resp <- TimerResponse{
+						op:     TimerOpRemaining,
+						time:   alarm.endtime,
+						status: nil,
+					}
+				}
+			}
 		}
 	}
 }
@@ -74,12 +117,8 @@ func timerproc(alarm *Alarm) {
 	for {
 		select {
 		case newinterval := <-control:
-			// we're going to try the 1.23 timer updates
-			//if timer != nil {
-			//	timer.Stop()
-			//}
+			alarm.endtime = time.Now().Add(time.Duration(newinterval) * time.Second)
 			timer = time.NewTimer(time.Duration(newinterval) * time.Second)
-			// defer timer.Stop()
 		case <-cancel:
 			timer.Stop()
 			return
@@ -96,6 +135,7 @@ func NewTimerManager() *TimerManager {
 		Deadhosts:  make(chan string),
 		Cancelhost: make(chan string),
 		Cancel:     make(chan int),
+		Requests:   make(chan TimerRequest),
 	}
 	go managerproc(&newman)
 	return &newman
@@ -109,4 +149,18 @@ func (tm *TimerManager) RegisterHost(host string, time int) int {
 	}
 	tm.Update <- nt
 	return <-nt.res
+}
+
+func (tm *TimerManager) EndTime(host string) (time.Time, error) {
+	req := TimerRequest{
+		op:    TimerOpRemaining,
+		timer: host,
+		resp:  make(chan TimerResponse),
+	}
+	tm.Requests <- req
+	resp := <-req.resp
+	if resp.op != TimerOpRemaining {
+		panic("invalid operation in response")
+	}
+	return resp.time, resp.status
 }
