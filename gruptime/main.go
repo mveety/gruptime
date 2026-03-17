@@ -14,12 +14,13 @@ import (
 )
 
 type Config struct {
-	HostTimeout   int      `json:"timeout"`
-	Broadcast     int      `json:"broadcast_interval"`
-	Peers         []string `json:"peers"`
-	PeerTimeout   int      `json:"peer_timeout"`
-	Verbose       bool     `json:"verbose"`
-	PrintMessages bool     `json:"print_messages"`
+	HostTimeout       int      `json:"timeout"`
+	BroadcastInterval int      `json:"broadcast_interval"`
+	Peers             []string `json:"peers"`
+	PeerTimeout       int      `json:"peer_timeout"`
+	Verbose           bool     `json:"verbose"`
+	PrintMessages     bool     `json:"print_messages"`
+	Broadcast         bool     `json:"broadcast"`
 }
 
 var (
@@ -39,6 +40,7 @@ var (
 	allnodes      bool   = false
 	showlifetime  bool   = false
 	bcastall      bool   = false
+	bcastflag     bool   = false
 	noconfig      bool   = false
 	printmessages bool   = false
 	printmsgflag  bool   = false
@@ -68,14 +70,17 @@ func updateConfiguration(conf Config) {
 	if conf.PeerTimeout > 0 {
 		PeerTimeout = time.Duration(conf.PeerTimeout) * time.Second
 	}
-	if conf.Broadcast > 0 {
-		BroadcastTimeout = time.Duration(conf.Broadcast) * time.Second
+	if conf.BroadcastInterval > 0 {
+		BroadcastTimeout = time.Duration(conf.BroadcastInterval) * time.Second
 	}
 	if !verboseflag {
 		verbose = conf.Verbose
 	}
 	if !printmsgflag {
 		printmessages = conf.PrintMessages
+	}
+	if !bcastflag {
+		bcastall = conf.Broadcast
 	}
 }
 
@@ -89,6 +94,7 @@ func printConfig() {
 		}
 		log.Printf("HostTimeout = %v", HostTimeout)
 		log.Printf("PeerTimeout = %v", PeerTimeout)
+		log.Printf("Broadcast = %v", bcastall)
 		log.Printf("BroadcastTimeout = %v", BroadcastTimeout)
 		log.Printf("Verbose = %v", verbose)
 		log.Printf("PrintMessages = %v", printmessages)
@@ -123,7 +129,7 @@ func main() {
 	flag.BoolVar(&printnodes, "nodes", false, "print a list of known nodes instead of uptimes")
 	flag.BoolVar(&allnodes, "all", false, "print all known nodes")
 	flag.BoolVar(&showlifetime, "lifetimes", false, "show entry lifetimes")
-	flag.BoolVar(&bcastall, "broadcast", false, "Send known node info to peers")
+	flag.BoolVar(&bcastflag, "broadcast", false, "Send known node info to peers")
 	flag.BoolVar(&noconfig, "noconfig", false, "Disable loading configuration")
 	flag.BoolVar(&printmsgflag, "messages", false, "Print received messages")
 
@@ -131,6 +137,7 @@ func main() {
 
 	verbose = verboseflag
 	printmessages = printmsgflag
+	bcastall = bcastflag
 
 	if startserver && notcp && noudp {
 		log.Fatal("error: must start either tcp or udp server")
