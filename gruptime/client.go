@@ -3,8 +3,11 @@ package main
 import (
 	"encoding/gob"
 	"errors"
+	"fmt"
 	"log"
+	"math"
 	"net"
+	"os"
 
 	"github.com/mveety/gruptime/internal/uptime"
 )
@@ -37,7 +40,10 @@ func TcpConnProc(db *Database, conn net.Conn) {
 	}
 }
 
-func TCPServer(db *Database) {
+func ClientServer(db *Database) {
+	if verbose {
+		log.Print("starting client connection server")
+	}
 	ln, err := net.Listen("tcp", "127.0.0.1:8784") // UPTI
 	if err != nil {
 		log.Fatal(err)
@@ -71,25 +77,20 @@ func TCPGetUptimes(addr string) ([]uptime.Uptime, map[string]bool, error) {
 }
 
 func ReloadProc(conn net.Conn) {
-	var n int
 	defer conn.Close()
-	peerslock.Lock()
-	peers, n = readConfigfile(configfile)
-	if verbose {
-		log.Printf("reload: found %d hosts", n)
-		if len(peers) > 0 {
-			for _, s := range peers {
-				log.Print(s)
-			}
-		}
+	conf, err := readConfigfile(configfile)
+	if err != nil {
+		log.Printf("unable to read config file \"%s\": %v", configfile, err)
+		return
 	}
-	peerslock.Unlock()
+	if verbose {
+		log.Printf("reloading config file \"%s\"", configfile)
+	}
+	updateConfiguration(conf)
+	printConfig()
 }
 
 func ReloadServer() {
-	if notcp {
-		return
-	}
 	if verbose {
 		log.Print("starting reload server")
 	}
@@ -113,4 +114,109 @@ func SendReloadMsg() error {
 	}
 	defer conn.Close()
 	return nil
+}
+
+func printUptime(u uptime.Uptime) {
+	uptimeDays := int(math.Floor(u.Time.Hours()) / 24)
+	uptimeHours := int(u.Time.Hours()) % 24
+	uptimeMinutes := int(u.Time.Minutes()) % 60
+	uptimeSeconds := int(u.Time.Seconds()) % 60
+	var uptime string
+	var nusers string
+	lifetimestr := ""
+	if uptimeDays < 1 {
+		if uptimeHours < 1 {
+			if uptimeMinutes < 1 {
+				uptime = fmt.Sprintf("%d seconds", uptimeSeconds)
+			} else {
+				uptime = fmt.Sprintf("%d minutes", uptimeMinutes)
+			}
+		} else {
+			uptime = fmt.Sprintf("%2d:%02d", uptimeHours, uptimeMinutes)
+		}
+	} else {
+		uptime = fmt.Sprintf("%d+%02d:%02d", uptimeDays, uptimeHours, uptimeMinutes)
+	}
+	if u.NUsers == 1 {
+		nusers = fmt.Sprintf("%d user", u.NUsers)
+	} else {
+		nusers = fmt.Sprintf("%d users", u.NUsers)
+	}
+	if showlifetime {
+		if u.Version > 3 {
+			lifetimestr = fmt.Sprintf("  (%v left)", u.Lifetime)
+		} else {
+			lifetimestr = "  (old version)"
+		}
+	}
+
+	fmt.Printf("%-16s %-8s %s, %s, load %.2f, %.2f, %.2f%s\n", u.Hostname, u.OS, uptime, nusers, u.Load1, u.Load5, u.Load15, lifetimestr)
+}
+
+func clientmain() {
+	defer os.Exit(0)
+	uptimes, allpeers, err := TCPGetUptimes("127.0.0.1")
+	if err != nil {
+		fmt.Printf("error: unable to connect to local daemon: %v\n", err)
+		return
+	}
+
+	uptimesmap := make(map[string]uptime.Uptime)
+	for _, u := range uptimes {
+		uptimesmap[u.Hostname] = u
+	}
+
+	if printnodes {
+		if allnodes {
+			start := true
+			for k := range allpeers {
+				if start {
+					fmt.Printf("%s", k)
+					start = false
+				} else {
+					fmt.Printf(" %s", k)
+				}
+			}
+		} else {
+			start := true
+			for _, u := range uptimes {
+				if start {
+					fmt.Printf("%s", u.Hostname)
+					start = false
+				} else {
+					fmt.Printf(" %s", u.Hostname)
+				}
+			}
+		}
+		fmt.Printf("\n")
+		return
+	}
+
+	if onlynode == "" {
+		if allnodes {
+			for k := range allpeers {
+				if allpeers[k] {
+					printUptime(uptimesmap[k])
+				} else {
+					fmt.Printf("%-16s down\n", k)
+				}
+			}
+		} else {
+			for _, u := range uptimes {
+				printUptime(u)
+			}
+		}
+		return
+	}
+
+	status, exists := allpeers[onlynode]
+	if !exists {
+		fmt.Printf("error: node \"%s\" not known!\n", onlynode)
+		os.Exit(-1)
+	}
+	if status {
+		printUptime(uptimesmap[onlynode])
+	} else {
+		fmt.Printf("%-16s down\n", onlynode)
+	}
 }

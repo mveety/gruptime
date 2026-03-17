@@ -9,8 +9,8 @@ import (
 )
 
 var (
-	HostTimeout     = 480   // hosts timeout every 480 seconds
-	PeerTimeout     = 86400 // peers timeout after a day
+	HostTimeout     = time.Duration(480) * time.Second   // hosts timeout every 480 seconds
+	PeerTimeout     = time.Duration(86400) * time.Second // peers timeout after a day
 	ErrDBNotStarted = errors.New("db not started")
 	ErrDBStarted    = errors.New("db already started")
 	ErrNoHost       = errors.New("host not found")
@@ -64,9 +64,9 @@ func (d *Database) handlemessage(msg DBMessage) {
 	case OpAddHost:
 		timeout := HostTimeout
 		if msg.data.Lifetime > 0 {
-			timeout = int(msg.data.Lifetime.Seconds())
+			timeout = msg.data.Lifetime
 		} else {
-			msg.data.Lifetime = time.Duration(HostTimeout) * time.Second
+			msg.data.Lifetime = HostTimeout
 		}
 		endtime, err := d.timers.EndTime(msg.data.Hostname)
 		if err != nil && msg.data.Lifetime < time.Until(endtime) {

@@ -12,16 +12,15 @@ const (
 
 type Alarm struct {
 	Hostname string
-	control  chan int
+	control  chan time.Duration
 	cancel   chan int
 	manager  chan string
-	info     chan time.Duration
 	endtime  time.Time
 }
 
 type Timer struct {
 	Hostname string
-	time     int
+	time     time.Duration
 	res      chan int
 }
 
@@ -58,7 +57,7 @@ func managerproc(man *TimerManager) {
 			} else {
 				newalarm := &Alarm{
 					Hostname: updatemsg.Hostname,
-					control:  make(chan int),
+					control:  make(chan time.Duration),
 					cancel:   make(chan int),
 					manager:  managerchan,
 				}
@@ -113,14 +112,14 @@ func timerproc(alarm *Alarm) {
 	var timer *time.Timer = nil
 	control := alarm.control
 	cancel := alarm.cancel
-	firstduration := time.Duration(<-control) * time.Second
+	firstduration := <-control
 	alarm.endtime = time.Now().Add(firstduration)
 	timer = time.NewTimer(firstduration)
 	for {
 		select {
 		case newinterval := <-control:
-			alarm.endtime = time.Now().Add(time.Duration(newinterval) * time.Second)
-			timer = time.NewTimer(time.Duration(newinterval) * time.Second)
+			alarm.endtime = time.Now().Add(newinterval)
+			timer = time.NewTimer(newinterval)
 		case <-cancel:
 			timer.Stop()
 			return
@@ -143,7 +142,7 @@ func NewTimerManager() *TimerManager {
 	return &newman
 }
 
-func (tm *TimerManager) RegisterHost(host string, time int) int {
+func (tm *TimerManager) RegisterHost(host string, time time.Duration) int {
 	nt := Timer{
 		Hostname: host,
 		time:     time,
