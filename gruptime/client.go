@@ -91,6 +91,10 @@ func ReloadProc(conn net.Conn) {
 }
 
 func ReloadServer() {
+	if noreloads {
+		log.Print("configuration reloading disabled")
+		return
+	}
 	if verbose {
 		log.Print("starting reload server")
 	}
