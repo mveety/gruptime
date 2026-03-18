@@ -171,17 +171,7 @@ func clientmain() {
 	}
 
 	if printnodes {
-		if allnodes {
-			start := true
-			for k := range allpeers {
-				if start {
-					fmt.Printf("%s", k)
-					start = false
-				} else {
-					fmt.Printf(" %s", k)
-				}
-			}
-		} else {
+		if onlyalive {
 			start := true
 			for _, u := range uptimes {
 				if start {
@@ -191,23 +181,33 @@ func clientmain() {
 					fmt.Printf(" %s", u.Hostname)
 				}
 			}
+		} else {
+			start := true
+			for k := range allpeers {
+				if start {
+					fmt.Printf("%s", k)
+					start = false
+				} else {
+					fmt.Printf(" %s", k)
+				}
+			}
 		}
 		fmt.Printf("\n")
 		return
 	}
 
 	if onlynode == "" {
-		if allnodes {
+		if onlyalive {
+			for _, u := range uptimes {
+				printUptime(u)
+			}
+		} else {
 			for k := range allpeers {
 				if allpeers[k] {
 					printUptime(uptimesmap[k])
 				} else {
 					fmt.Printf("%-16s down\n", k)
 				}
-			}
-		} else {
-			for _, u := range uptimes {
-				printUptime(u)
 			}
 		}
 		return

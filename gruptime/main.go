@@ -27,7 +27,10 @@ var (
 	startserver   bool   = false
 	noudp         bool   = false
 	notcp         bool   = false
-	configfile    string = "/usr/local/etc/gruptime.conf"
+	configfile    string = ""
+	confargdef    string = ""
+	defconfigfile string = "/usr/local/etc/gruptime.conf"
+	altconfigfile string = "/etc/gruptime.conf"
 	onlynode      string = ""
 	verbose       bool   = false
 	verboseflag   bool   = false
@@ -37,7 +40,7 @@ var (
 	getversion    bool   = false
 	udpiface      string = ""
 	printnodes    bool   = false
-	allnodes      bool   = false
+	onlyalive     bool   = false
 	showlifetime  bool   = false
 	bcastall      bool   = false
 	bcastflag     bool   = false
@@ -112,13 +115,28 @@ func getGitCommit() string {
 	return "(unknown)"
 }
 
+func setdefaultconfigfile() {
+	_, err := os.Stat(defconfigfile)
+	if err == nil {
+		confargdef = defconfigfile
+		return
+	}
+	_, err = os.Stat(altconfigfile)
+	if err == nil {
+		confargdef = altconfigfile
+		return
+	}
+	confargdef = defconfigfile
+}
+
 func main() {
 	peerslock = new(sync.RWMutex)
+	setdefaultconfigfile()
 
 	flag.BoolVar(&startserver, "server", false, "run as gruptime server")
 	flag.BoolVar(&noudp, "noudp", false, "disable udp communication (server) ")
 	flag.BoolVar(&notcp, "notcp", false, "disable tcp communication (server)")
-	flag.StringVar(&configfile, "config", "/usr/local/etc/gruptime.conf", "configuration file (server)")
+	flag.StringVar(&configfile, "config", confargdef, "configuration file (server)")
 	flag.StringVar(&onlynode, "node", "", "node to query")
 	flag.BoolVar(&verboseflag, "verbose", false, "verbose output")
 	flag.BoolVar(&reloadconfig, "reload", false, "reload config file (client)")
@@ -127,7 +145,7 @@ func main() {
 	flag.BoolVar(&getversion, "version", false, "print version and exit")
 	flag.StringVar(&udpiface, "udpiface", "", "multicast on this interface")
 	flag.BoolVar(&printnodes, "nodes", false, "print a list of known nodes instead of uptimes")
-	flag.BoolVar(&allnodes, "all", false, "print all known nodes")
+	flag.BoolVar(&onlyalive, "alive", false, "only print living nodes")
 	flag.BoolVar(&showlifetime, "lifetimes", false, "show entry lifetimes")
 	flag.BoolVar(&bcastflag, "broadcast", false, "Send known node info to peers")
 	flag.BoolVar(&noconfig, "noconfig", false, "Disable loading configuration")
