@@ -75,6 +75,8 @@ func OS2Byte(os string) byte {
 		return 5
 	case "NetBSD":
 		return 6
+	case "Solaris":
+		return 7
 	case "Plan 9":
 		return 9
 	default:
@@ -96,6 +98,8 @@ func Byte2OS(osbyte byte) string {
 		return "OpenBSD"
 	case 6:
 		return "NetBSD"
+	case 7:
+		return "Solaris"
 	case 9:
 		return "Plan 9"
 	default:
