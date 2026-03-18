@@ -1,0 +1,5 @@
+get wild file *.h
+get wild file *.c
+open descrip.mms
+open project.eve
+delete buffer main

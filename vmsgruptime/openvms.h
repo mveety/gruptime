@@ -1,0 +1,22 @@
+#define __NEW_STARLET 1
+#include <stdio.h>
+#include <stdlib.h>
+#include <ssdef.h>
+#include <stsdef.h>
+#include <descrip.h>
+#include <pscandef.h>
+#include <syidef.h>
+#include <jpidef.h>
+#include <efndef.h>
+#include <assert.h>
+#include <iosbdef.h>
+#include <lib$routines.h>
+#include <starlet.h>
+#include <stdint.h>
+#include <types.h>
+#include <string.h>
+#include <in.h>
+#include <inet.h>
+#include <netdb.h>
+#include <socket.h>
+#include <unixio.h>
