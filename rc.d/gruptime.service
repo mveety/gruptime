@@ -1,0 +1,16 @@
+# gruptime systemd service file
+
+[Unit]
+Description=gruptime server
+After=network.target
+
+[Service]
+Type=simple
+User=nobody		# you may wish to change this
+ExecStart=/usr/local/bin/gruptime -server -notcp
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
+

@@ -1,0 +1,30 @@
+#!/bin/sh
+
+# PROVIDE: gruptime
+# REQUIRE: DAEMON NETWORKING
+# KEYWORD: shutdown
+#
+# Add the following to /etc/rc.conf to enable this service:
+#
+# gruptime_enable (bool): Set it to YES to run gruptime on startup
+#                 Default: NO
+# gruptime_args (string): Options to pass to gruptime
+#                 Default: -server -notcp
+
+. /etc/rc.subr
+
+name="gruptime"
+rcvar="${name}_enable"
+
+load_rc_config "$name"
+
+: ${gruptime_enable="NO"}
+: ${gruptime_args="-server -notcp"}
+
+command="/usr/sbin/daemon"
+procname="/usr/local/bin/${name}"
+pidfile="/var/run/${name}.pid"
+command_args="-s err -T ${name} -p ${pidfile} ${procname} ${gruptime_args}"
+
+run_rc_command "$1"
+
