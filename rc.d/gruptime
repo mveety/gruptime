@@ -19,7 +19,7 @@ rcvar="${name}_enable"
 load_rc_config "$name"
 
 : ${gruptime_enable="NO"}
-: ${gruptime_args="-server -notcp"}
+: ${gruptime_args="-server"}
 
 command="/usr/sbin/daemon"
 procname="/usr/local/bin/${name}"
