@@ -1,4 +1,4 @@
-//go:build solaris && !illumos
+//go:build illumos && !solaris
 
 package uptime
 
@@ -43,7 +43,7 @@ func getload() (*loadaverage, error) {
 }
 
 func getos() string {
-	return "Solaris"
+	return "Illumos"
 }
 
 func getuptime_seconds() (time.Duration, error) {
