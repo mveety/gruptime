@@ -9,8 +9,6 @@ import (
 )
 
 var (
-	HostTimeout     = time.Duration(480) * time.Second   // hosts timeout every 480 seconds
-	PeerTimeout     = time.Duration(86400) * time.Second // peers timeout after a day
 	ErrDBNotStarted = errors.New("db not started")
 	ErrDBStarted    = errors.New("db already started")
 	ErrNoHost       = errors.New("host not found")
@@ -62,15 +60,15 @@ func initUptimedb() *Database {
 func (d *Database) handlemessage(msg DBMessage) {
 	switch msg.op {
 	case OpAddHost:
-		timeout := HostTimeout
+		timeout := time.Duration(runningConfig.HostTimeout) * time.Second
 		if msg.data.Lifetime > 0 {
 			timeout = msg.data.Lifetime
 		} else {
-			msg.data.Lifetime = HostTimeout
+			msg.data.Lifetime = time.Duration(runningConfig.HostTimeout) * time.Second
 		}
 		endtime, err := d.timers.EndTime(msg.data.Hostname)
 		if err != nil && msg.data.Lifetime < time.Until(endtime) {
-			if verbose {
+			if runningConfig.Verbose {
 				log.Printf("dropping shorter lived uptime for %s", msg.data.Hostname)
 			}
 			msg.resp <- DBResponse{err: nil}
@@ -79,7 +77,7 @@ func (d *Database) handlemessage(msg DBMessage) {
 		d.data[msg.data.Hostname] = msg.data
 		d.timers.RegisterHost(msg.data.Hostname, timeout)
 		d.peers[msg.data.Hostname] = true
-		d.peertimers.RegisterHost(msg.data.Hostname, PeerTimeout)
+		d.peertimers.RegisterHost(msg.data.Hostname, time.Duration(runningConfig.PeerTimeout)*time.Second)
 		msg.resp <- DBResponse{err: nil}
 		return
 	case OpGetHost:

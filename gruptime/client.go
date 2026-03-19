@@ -41,7 +41,7 @@ func TcpConnProc(db *Database, conn net.Conn) {
 }
 
 func ClientServer(db *Database) {
-	if verbose {
+	if runningConfig.Verbose {
 		log.Print("starting client connection server")
 	}
 	ln, err := net.Listen("tcp", "127.0.0.1:8784") // UPTI
@@ -83,7 +83,7 @@ func ReloadProc(conn net.Conn) {
 		log.Printf("unable to read config file \"%s\": %v", configfile, err)
 		return
 	}
-	if verbose {
+	if runningConfig.Verbose {
 		log.Printf("reloading config file \"%s\"", configfile)
 	}
 	updateConfiguration(conf)
@@ -95,7 +95,7 @@ func ReloadServer() {
 		log.Print("configuration reloading disabled")
 		return
 	}
-	if verbose {
+	if runningConfig.Verbose {
 		log.Print("starting reload server")
 	}
 	ln, err := net.Listen("tcp", "127.0.0.1:8785")

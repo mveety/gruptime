@@ -21,32 +21,42 @@ type Config struct {
 	Verbose           bool     `json:"verbose"`
 	PrintMessages     bool     `json:"print_messages"`
 	Broadcast         bool     `json:"broadcast"`
+	UseTCP            bool     `json:"use_tcp"`
+	UseUDP            bool     `json:"use_udp"`
+	BindAddress       string   `json:"bind_address"`
+	Interface         string   `json:"interface"`
 }
+
+var defaultConfig Config = Config{
+	HostTimeout:       480,
+	PeerTimeout:       86000,
+	BroadcastInterval: 240,
+	Verbose:           false,
+	PrintMessages:     false,
+	Broadcast:         true,
+	UseTCP:            false,
+	UseUDP:            true,
+	BindAddress:       "0.0.0.0",
+	Interface:         "",
+}
+
+var runningConfig Config
 
 var (
 	startserver   bool   = false
-	noudp         bool   = false
-	notcp         bool   = false
 	configfile    string = ""
 	confargdef    string = ""
 	defconfigfile string = "/usr/local/etc/gruptime.conf"
 	altconfigfile string = "/etc/gruptime.conf"
 	onlynode      string = ""
-	verbose       bool   = false
-	verboseflag   bool   = false
 	reloadconfig  bool   = false
 	noreloads     bool   = false
-	tcpbind       string = ""
 	getversion    bool   = false
-	udpiface      string = ""
 	printnodes    bool   = false
 	onlyalive     bool   = false
 	showlifetime  bool   = false
-	bcastall      bool   = false
-	bcastflag     bool   = false
 	noconfig      bool   = false
-	printmessages bool   = false
-	printmsgflag  bool   = false
+	verbose       bool   = false
 )
 
 func readConfigfile(file string) (Config, error) {
@@ -55,7 +65,7 @@ func readConfigfile(file string) (Config, error) {
 		return Config{}, err
 	}
 
-	var conf Config
+	conf := defaultConfig
 	err = json.Unmarshal(confdata, &conf)
 	if err != nil {
 		return Config{}, err
@@ -67,40 +77,30 @@ func updateConfiguration(conf Config) {
 	peerslock.Lock()
 	peers = conf.Peers
 	peerslock.Unlock()
-	if conf.HostTimeout > 0 {
-		HostTimeout = time.Duration(conf.HostTimeout) * time.Second
-	}
-	if conf.PeerTimeout > 0 {
-		PeerTimeout = time.Duration(conf.PeerTimeout) * time.Second
-	}
-	if conf.BroadcastInterval > 0 {
-		BroadcastTimeout = time.Duration(conf.BroadcastInterval) * time.Second
-	}
-	if !verboseflag {
-		verbose = conf.Verbose
-	}
-	if !printmsgflag {
-		printmessages = conf.PrintMessages
-	}
-	if !bcastflag {
-		bcastall = conf.Broadcast
+	runningConfig = conf
+	if verbose {
+		runningConfig.Verbose = verbose
 	}
 }
 
 func printConfig() {
-	if verbose {
+	if runningConfig.Verbose {
 		log.Printf("found %d peers", len(peers))
 		if len(peers) > 0 {
 			for _, s := range peers {
 				log.Print(s)
 			}
 		}
-		log.Printf("HostTimeout = %v", HostTimeout)
-		log.Printf("PeerTimeout = %v", PeerTimeout)
-		log.Printf("Broadcast = %v", bcastall)
-		log.Printf("BroadcastTimeout = %v", BroadcastTimeout)
-		log.Printf("Verbose = %v", verbose)
-		log.Printf("PrintMessages = %v", printmessages)
+		log.Printf("HostTimeout = %v", time.Duration(runningConfig.HostTimeout)*time.Second)
+		log.Printf("PeerTimeout = %v", time.Duration(runningConfig.PeerTimeout)*time.Second)
+		log.Printf("Broadcast = %v", runningConfig.Broadcast)
+		log.Printf("BroadcastInterval = %v", time.Duration(runningConfig.BroadcastInterval)*time.Second)
+		log.Printf("Verbose = %v", runningConfig.Verbose)
+		log.Printf("PrintMessages = %v", runningConfig.PrintMessages)
+		log.Printf("UseTCP = %v", runningConfig.UseTCP)
+		log.Printf("UseUDP = %v", runningConfig.UseUDP)
+		log.Printf("BindAddress = %v", runningConfig.BindAddress)
+		log.Printf("Interface = %v", runningConfig.Interface)
 	}
 }
 
@@ -134,35 +134,23 @@ func main() {
 	setdefaultconfigfile()
 
 	flag.BoolVar(&startserver, "server", false, "run as gruptime server")
-	flag.BoolVar(&noudp, "noudp", false, "disable udp communication (server) ")
-	flag.BoolVar(&notcp, "notcp", false, "disable tcp communication (server)")
 	flag.StringVar(&configfile, "config", confargdef, "configuration file (server)")
 	flag.StringVar(&onlynode, "node", "", "node to query")
-	flag.BoolVar(&verboseflag, "verbose", false, "verbose output")
 	flag.BoolVar(&reloadconfig, "reload", false, "reload config file (client)")
 	flag.BoolVar(&noreloads, "noreloads", false, "disable config reloading (server)")
-	flag.StringVar(&tcpbind, "bind", "0.0.0.0", "tcp address to bind to")
 	flag.BoolVar(&getversion, "version", false, "print version and exit")
-	flag.StringVar(&udpiface, "udpiface", "", "multicast on this interface")
 	flag.BoolVar(&printnodes, "nodes", false, "print a list of known nodes instead of uptimes")
 	flag.BoolVar(&onlyalive, "alive", false, "only print living nodes")
 	flag.BoolVar(&showlifetime, "lifetimes", false, "show entry lifetimes")
-	flag.BoolVar(&bcastflag, "broadcast", false, "Send known node info to peers")
 	flag.BoolVar(&noconfig, "noconfig", false, "Disable loading configuration")
-	flag.BoolVar(&printmsgflag, "messages", false, "Print received messages")
+	flag.BoolVar(&verbose, "verbose", false, "print debugging messages")
 
 	flag.Parse()
 
-	verbose = verboseflag
-	printmessages = printmsgflag
-	bcastall = bcastflag
-
-	if startserver && notcp && noudp {
-		log.Fatal("error: must start either tcp or udp server")
-	}
+	runningConfig = defaultConfig
 
 	if startserver {
-		if verbose {
+		if runningConfig.Verbose {
 			log.Printf("gruptime %v", getGitCommit())
 			log.Printf("protocol %v", int(uptime.ProtoVersion))
 		}
@@ -173,6 +161,9 @@ func main() {
 			} else {
 				log.Printf("unable to open configuration \"%s\": %v", configfile, err)
 			}
+		}
+		if !runningConfig.UseTCP && !runningConfig.UseUDP {
+			log.Fatal("must set UseUDP or UseTCP")
 		}
 		servermain()
 	} else {

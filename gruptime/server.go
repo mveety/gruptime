@@ -18,9 +18,8 @@ const (
 )
 
 var (
-	BroadcastTimeout = HostTimeout / 4
-	peers            []string
-	peerslock        *sync.RWMutex
+	peers     []string
+	peerslock *sync.RWMutex
 )
 
 func udpListenerProc(conn *net.UDPConn, resp chan uptime.Uptime) {
@@ -38,8 +37,8 @@ func udpListenerProc(conn *net.UDPConn, resp chan uptime.Uptime) {
 			log.Printf("error: udp message from %s: %s", addr.String(), err)
 			continue
 		}
-		if verbose {
-			if printmessages {
+		if runningConfig.Verbose {
+			if runningConfig.PrintMessages {
 				log.Printf("got udp message for %s from %s: %v", newuptime.Hostname, addr.String(), newuptime)
 			} else {
 				log.Printf("got udp message for %s from %s", newuptime.Hostname, addr.String())
@@ -52,19 +51,19 @@ func udpListenerProc(conn *net.UDPConn, resp chan uptime.Uptime) {
 func udpListener(straddr string) (chan uptime.Uptime, error) {
 	var iface *net.Interface = nil
 	resp := make(chan uptime.Uptime)
-	if noudp {
+	if !runningConfig.UseUDP {
 		return resp, nil
 	}
-	if verbose {
+	if runningConfig.Verbose {
 		log.Print("listening on udp multicast")
 	}
 	addr, err := net.ResolveUDPAddr("udp", straddr)
 	if err != nil {
 		return resp, err
 	}
-	if udpiface != "" {
+	if runningConfig.Interface != "" {
 		var err error
-		iface, err = net.InterfaceByName(udpiface)
+		iface, err = net.InterfaceByName(runningConfig.Interface)
 		if err != nil {
 			return resp, err
 		}
@@ -91,8 +90,8 @@ func tcpListenerWorker(conn net.Conn, resp chan uptime.Uptime) {
 		log.Printf("error: tcp message from %s: %s", addr.String(), err)
 		return
 	}
-	if verbose {
-		if printmessages {
+	if runningConfig.Verbose {
+		if runningConfig.PrintMessages {
 			log.Printf("got tcp message for %s from %s: %v", newuptime.Hostname, addr.String(), newuptime)
 		} else {
 			log.Printf("got tcp message for %s from %s", newuptime.Hostname, addr.String())
@@ -114,13 +113,13 @@ func tcpListenerProc(ln net.Listener, resp chan uptime.Uptime) {
 
 func tcpListener(tcpport string) (chan uptime.Uptime, error) {
 	resp := make(chan uptime.Uptime)
-	if notcp {
+	if !runningConfig.UseTCP {
 		return resp, nil
 	}
-	if verbose {
+	if runningConfig.Verbose {
 		log.Print("listening on tcp \"multicast\"")
 	}
-	ln, err := net.Listen("tcp", tcpbind+tcpport)
+	ln, err := net.Listen("tcp", runningConfig.BindAddress+tcpport)
 	if err != nil {
 		return resp, err
 	}
@@ -148,8 +147,8 @@ func udpBroadcaster(straddr string, trigger chan uptime.Uptime) error {
 	if err != nil {
 		return err
 	}
-	if udpiface != "" {
-		iface, err := net.InterfaceByName(udpiface)
+	if runningConfig.Interface != "" {
+		iface, err := net.InterfaceByName(runningConfig.Interface)
 		if err != nil {
 			conn.Close()
 			return err
@@ -208,13 +207,13 @@ func dobroadcastall(db *Database, myhostname string, udpchan chan uptime.Uptime,
 		if uptime.Version < 4 {
 			continue
 		}
-		if verbose {
+		if runningConfig.Verbose {
 			log.Printf("sending %v to peers", uptime)
 		}
-		if !noudp {
+		if runningConfig.UseUDP {
 			udpchan <- uptime
 		}
-		if !notcp {
+		if runningConfig.UseTCP {
 			tcpchan <- uptime
 		}
 	}
@@ -223,13 +222,13 @@ func dobroadcastall(db *Database, myhostname string, udpchan chan uptime.Uptime,
 func BroadcasterProc(db *Database, mcast string, tcpport string, resp chan uptime.Uptime) {
 	udptrigger := make(chan uptime.Uptime)
 	tcptrigger := make(chan uptime.Uptime)
-	if !noudp {
+	if runningConfig.UseUDP {
 		udpe := udpBroadcaster(mcast, udptrigger)
 		if udpe != nil {
 			log.Fatal(udpe)
 		}
 	}
-	if !notcp {
+	if runningConfig.UseTCP {
 		tcpe := tcpBroadcaster(tcpport, tcptrigger)
 		if tcpe != nil {
 			log.Fatal(tcpe)
@@ -237,34 +236,34 @@ func BroadcasterProc(db *Database, mcast string, tcpport string, resp chan uptim
 	}
 
 	startuptime, _ := uptime.GetUptime()
-	startuptime.Lifetime = HostTimeout
+	startuptime.Lifetime = time.Duration(runningConfig.HostTimeout) * time.Second
 	resp <- startuptime
-	if !noudp {
+	if runningConfig.UseUDP {
 		udptrigger <- startuptime
 	}
-	if !notcp {
+	if runningConfig.UseTCP {
 		tcptrigger <- startuptime
 	}
-	timer := time.NewTimer(BroadcastTimeout)
+	timer := time.NewTimer(time.Duration(runningConfig.BroadcastInterval) * time.Second)
 	for {
 		select {
 		case <-timer.C:
 			newuptime, err := uptime.GetUptime()
-			newuptime.Lifetime = HostTimeout
+			newuptime.Lifetime = time.Duration(runningConfig.HostTimeout) * time.Second
 			if err != nil {
 				log.Fatal(err)
 			}
 			resp <- newuptime
-			if !noudp {
+			if runningConfig.UseUDP {
 				udptrigger <- newuptime
 			}
-			if !notcp {
+			if runningConfig.UseTCP {
 				tcptrigger <- newuptime
 			}
-			if bcastall {
+			if runningConfig.Broadcast {
 				go dobroadcastall(db, newuptime.Hostname, udptrigger, tcptrigger)
 			}
-			timer = time.NewTimer(BroadcastTimeout)
+			timer = time.NewTimer(time.Duration(runningConfig.BroadcastInterval) * time.Second)
 		}
 	}
 }
@@ -276,7 +275,7 @@ func Broadcaster(db *Database, mcastaddr string, tcpport string) (chan uptime.Up
 }
 
 func Server(d *Database) {
-	if verbose {
+	if runningConfig.Verbose {
 		log.Print("starting multicast server")
 	}
 	udpchan, err := udpListener(MulticastAddr + MulticastPort)
