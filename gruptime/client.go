@@ -129,9 +129,9 @@ func printUptime(u uptime.Uptime) {
 		uptime = fmt.Sprintf("%d+%02d:%02d", uptimeDays, uptimeHours, uptimeMinutes)
 	}
 	if u.NUsers == 1 {
-		nusers = fmt.Sprintf("%d user", u.NUsers)
+		nusers = fmt.Sprintf("%d user,", u.NUsers)
 	} else {
-		nusers = fmt.Sprintf("%d users", u.NUsers)
+		nusers = fmt.Sprintf("%d users,", u.NUsers)
 	}
 	if showlifetime {
 		if u.Version > 3 {
@@ -141,7 +141,7 @@ func printUptime(u uptime.Uptime) {
 		}
 	}
 
-	fmt.Printf("%-16s %-8s %s, %s, load %.2f, %.2f, %.2f%s\n", u.Hostname, u.OS, uptime, nusers, u.Load1, u.Load5, u.Load15, lifetimestr)
+	fmt.Printf("%-16s %-8s %s, %-9s load %.2f, %.2f, %.2f%s\n", u.Hostname, u.OS, uptime, nusers, u.Load1, u.Load5, u.Load15, lifetimestr)
 }
 
 func clientmain() {
