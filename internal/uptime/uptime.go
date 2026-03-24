@@ -15,14 +15,14 @@ import (
 )
 
 type Uptime struct {
-	Version  int           `json:"version"`
+	Version  int           `json:"message-version"`
 	Hostname string        `json:"hostname"`
-	OS       string        `json:"os"`
+	OS       string        `json:"system"`
 	Time     time.Duration `json:"uptime"`
-	Load1    float64       `json:"load1"`
-	Load5    float64       `json:"load5"`
-	Load15   float64       `json:"load15"`
-	NUsers   uint64        `json:"nusers"`
+	Load1    float64       `json:"load-average-1"`
+	Load5    float64       `json:"load-average-5"`
+	Load15   float64       `json:"load-average-15"`
+	NUsers   uint64        `json:"users"`
 	Lifetime time.Duration `json:"lifetime"`
 }
 
