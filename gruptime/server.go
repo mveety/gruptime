@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"log"
 	"net"
 	"time"
@@ -212,7 +213,7 @@ func dobroadcastall(db *Database, myhostname string, UseUDP bool, udpchan chan u
 	}
 }
 
-func Server(d *Database, clientchan chan net.Conn, reloadchan chan net.Conn) {
+func Server(d *Database, clientchan chan net.Conn, reloadchan chan ReloadMessage) {
 	if runningConfig.Verbose {
 		log.Print("starting multicast server")
 	}
@@ -301,32 +302,37 @@ func Server(d *Database, clientchan chan net.Conn, reloadchan chan net.Conn) {
 				log.Fatal(e)
 			}
 		case clientConn := <-clientchan:
-			go TcpConnProc(d, clientConn)
-		case reloadConn := <-reloadchan:
+			go TcpConnProc(d, clientConn, reloadchan)
+		case msg := <-reloadchan:
+			if !runningConfig.Reloads {
+				msg.resp <- ReloadResponse{err: errors.New("reloading disabled")}
+				continue
+			}
 			conf, err := readConfigfile(configfile)
 			if err != nil {
 				log.Printf("unable to read config file \"%s\": %v", configfile, err)
-				reloadConn.Close()
+				msg.resp <- ReloadResponse{err: err}
 				continue
 			}
 			if runningConfig.Verbose {
 				log.Printf("reloading config file \"%s\"", configfile)
 			}
 			updateConfiguration(conf)
-			printConfig()
-			reloadConn.Close()
+			if runningConfig.Verbose {
+				printConfig(runningConfig)
+			}
+			msg.resp <- ReloadResponse{err: nil}
 		}
 	}
 }
 
 func servermain() {
-	printConfig()
+	if runningConfig.Verbose {
+		printConfig(runningConfig)
+	}
 	db := initUptimedb()
 	clientchan := make(chan net.Conn)
-	reloadchan := make(chan net.Conn)
-	go ClientServer(clientchan)
-	if !noconfig {
-		go ReloadServer(reloadchan)
-	}
+	reloadchan := make(chan ReloadMessage)
+	go ClientServer(clientchan, reloadchan)
 	Server(db, clientchan, reloadchan)
 }

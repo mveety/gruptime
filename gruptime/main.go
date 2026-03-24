@@ -24,6 +24,7 @@ type Config struct {
 	UseUDP            bool     `json:"use_udp"`
 	BindAddress       string   `json:"bind_address"`
 	Interface         string   `json:"interface"`
+	Reloads           bool     `json:"reloads"`
 }
 
 var defaultConfig Config = Config{
@@ -37,6 +38,7 @@ var defaultConfig Config = Config{
 	UseUDP:            true,
 	BindAddress:       "0.0.0.0",
 	Interface:         "",
+	Reloads:           true,
 }
 
 var runningConfig Config
@@ -56,6 +58,7 @@ var (
 	showlifetime  bool   = false
 	noconfig      bool   = false
 	verbose       bool   = false
+	runningconfig bool   = false
 )
 
 func readConfigfile(file string) (Config, error) {
@@ -77,27 +80,29 @@ func updateConfiguration(conf Config) {
 	if verbose {
 		runningConfig.Verbose = verbose
 	}
+	if noreloads {
+		runningConfig.Reloads = false
+	}
 }
 
-func printConfig() {
-	if runningConfig.Verbose {
-		log.Printf("found %d peers", len(runningConfig.Peers))
-		if len(runningConfig.Peers) > 0 {
-			for _, s := range runningConfig.Peers {
-				log.Print(s)
-			}
+func printConfig(config Config) {
+	log.Printf("found %d peers", len(config.Peers))
+	if len(config.Peers) > 0 {
+		for _, s := range config.Peers {
+			log.Print(s)
 		}
-		log.Printf("HostTimeout = %v", time.Duration(runningConfig.HostTimeout)*time.Second)
-		log.Printf("PeerTimeout = %v", time.Duration(runningConfig.PeerTimeout)*time.Second)
-		log.Printf("Broadcast = %v", runningConfig.Broadcast)
-		log.Printf("BroadcastInterval = %v", time.Duration(runningConfig.BroadcastInterval)*time.Second)
-		log.Printf("Verbose = %v", runningConfig.Verbose)
-		log.Printf("PrintMessages = %v", runningConfig.PrintMessages)
-		log.Printf("UseTCP = %v", runningConfig.UseTCP)
-		log.Printf("UseUDP = %v", runningConfig.UseUDP)
-		log.Printf("BindAddress = %v", runningConfig.BindAddress)
-		log.Printf("Interface = %v", runningConfig.Interface)
 	}
+	log.Printf("HostTimeout = %v", time.Duration(config.HostTimeout)*time.Second)
+	log.Printf("PeerTimeout = %v", time.Duration(config.PeerTimeout)*time.Second)
+	log.Printf("Broadcast = %v", config.Broadcast)
+	log.Printf("BroadcastInterval = %v", time.Duration(config.BroadcastInterval)*time.Second)
+	log.Printf("Verbose = %v", config.Verbose)
+	log.Printf("PrintMessages = %v", config.PrintMessages)
+	log.Printf("UseTCP = %v", config.UseTCP)
+	log.Printf("UseUDP = %v", config.UseUDP)
+	log.Printf("BindAddress = %v", config.BindAddress)
+	log.Printf("Interface = %v", config.Interface)
+	log.Printf("Reloads = %v", config.Reloads)
 }
 
 func getGitCommit() string {
@@ -130,24 +135,28 @@ func main() {
 
 	flag.BoolVar(&startserver, "server", false, "run as gruptime server")
 	flag.StringVar(&configfile, "config", confargdef, "configuration file (server)")
-	flag.StringVar(&onlynode, "node", "", "node to query")
+	flag.StringVar(&onlynode, "node", "", "node to query (client)")
 	flag.BoolVar(&reloadconfig, "reload", false, "reload config file (client)")
 	flag.BoolVar(&noreloads, "noreloads", false, "disable config reloading (server)")
 	flag.BoolVar(&getversion, "version", false, "print version and exit")
-	flag.BoolVar(&printnodes, "nodes", false, "print a list of known nodes instead of uptimes")
-	flag.BoolVar(&onlyalive, "alive", false, "only print living nodes")
-	flag.BoolVar(&showlifetime, "lifetimes", false, "show entry lifetimes")
-	flag.BoolVar(&noconfig, "noconfig", false, "Disable loading configuration")
+	flag.BoolVar(&printnodes, "nodes", false, "print a list of known nodes instead of uptimes (client)")
+	flag.BoolVar(&onlyalive, "alive", false, "only print living nodes (client)")
+	flag.BoolVar(&showlifetime, "lifetimes", false, "show entry lifetimes (client)")
+	flag.BoolVar(&noconfig, "noconfig", false, "Disable loading configuration (server)")
 	flag.BoolVar(&verbose, "verbose", false, "print debugging messages")
+	flag.BoolVar(&runningconfig, "runningconfig", false, "get running configuration (client)")
 
 	flag.Parse()
 
 	runningConfig = defaultConfig
 
 	if startserver {
-		if runningConfig.Verbose {
+		if runningConfig.Verbose || getversion {
 			log.Printf("gruptime %v", getGitCommit())
 			log.Printf("protocol %v", int(uptime.ProtoVersion))
+			if getversion {
+				os.Exit(0)
+			}
 		}
 		if !noconfig {
 			conf, err := readConfigfile(configfile)
@@ -164,12 +173,31 @@ func main() {
 	} else {
 		if getversion {
 			fmt.Printf("gruptime %v\ngruptime protocol %v\n", getGitCommit(), int(uptime.ProtoVersion))
+			ServerConf, err := getConfigData()
+			if err == nil {
+				fmt.Printf("gruptime server %v\n", ServerConf.Version)
+				fmt.Printf("server protocol %v\n", ServerConf.ProtoVersion)
+			}
+			os.Exit(0)
+		}
+		if runningconfig {
+			ServerConf, err := getConfigData()
+			if err != nil {
+				fmt.Printf("error: unable to connect to local daemon: %v\n", err)
+				os.Exit(-1)
+			}
+			printConfig(ServerConf.Rconfig)
 			os.Exit(0)
 		}
 		if reloadconfig {
-			SendReloadMsg()
+			err := SendReloadMsg()
+			if err != nil {
+				fmt.Printf("error: unable to reload: %v\n", err)
+				os.Exit(-1)
+			}
+			os.Exit(0)
 		} else {
-			clientmain()
+			os.Exit(clientmain())
 		}
 	}
 }
