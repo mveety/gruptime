@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"runtime/debug"
-	"sync"
 	"time"
 
 	"github.com/mveety/gruptime/internal/uptime"
@@ -74,9 +73,6 @@ func readConfigfile(file string) (Config, error) {
 }
 
 func updateConfiguration(conf Config) {
-	peerslock.Lock()
-	peers = conf.Peers
-	peerslock.Unlock()
 	runningConfig = conf
 	if verbose {
 		runningConfig.Verbose = verbose
@@ -85,9 +81,9 @@ func updateConfiguration(conf Config) {
 
 func printConfig() {
 	if runningConfig.Verbose {
-		log.Printf("found %d peers", len(peers))
-		if len(peers) > 0 {
-			for _, s := range peers {
+		log.Printf("found %d peers", len(runningConfig.Peers))
+		if len(runningConfig.Peers) > 0 {
+			for _, s := range runningConfig.Peers {
 				log.Print(s)
 			}
 		}
@@ -130,7 +126,6 @@ func setdefaultconfigfile() {
 }
 
 func main() {
-	peerslock = new(sync.RWMutex)
 	setdefaultconfigfile()
 
 	flag.BoolVar(&startserver, "server", false, "run as gruptime server")

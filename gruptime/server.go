@@ -3,7 +3,6 @@ package main
 import (
 	"log"
 	"net"
-	"sync"
 	"time"
 
 	"github.com/mveety/gruptime/internal/uptime"
@@ -17,10 +16,7 @@ const (
 	ReadBuffer       = 1024 // should be big enough
 )
 
-var (
-	peers     []string
-	peerslock *sync.RWMutex
-)
+var myhostname string = ""
 
 func udpListenerProc(conn *net.UDPConn, resp chan uptime.Uptime) {
 	defer conn.Close()
@@ -181,11 +177,10 @@ func tcpBroadcastWorker(hostport string, u uptime.Uptime) {
 
 func tcpBroadcastProc(tcpport string, trigger chan uptime.Uptime) {
 	for newuptime := range trigger {
-		peerslock.RLock()
+		peers := runningConfig.Peers
 		for _, host := range peers {
 			go tcpBroadcastWorker(host+tcpport, newuptime)
 		}
-		peerslock.RUnlock()
 	}
 }
 
@@ -194,7 +189,7 @@ func tcpBroadcaster(tcpport string, trigger chan uptime.Uptime) error {
 	return nil
 }
 
-func dobroadcastall(db *Database, myhostname string, udpchan chan uptime.Uptime, tcpchan chan uptime.Uptime) {
+func dobroadcastall(db *Database, myhostname string, UseUDP bool, udpchan chan uptime.Uptime, UseTCP bool, tcpchan chan uptime.Uptime) {
 	uptimes, err := db.GetAllHosts()
 	if err != nil {
 		log.Printf("broadcaster: unable to get all nodes: %v", err)
@@ -210,68 +205,13 @@ func dobroadcastall(db *Database, myhostname string, udpchan chan uptime.Uptime,
 		if runningConfig.Verbose {
 			log.Printf("sending %v to peers", uptime)
 		}
-		if runningConfig.UseUDP {
+		if UseUDP {
 			udpchan <- uptime
 		}
-		if runningConfig.UseTCP {
+		if UseTCP {
 			tcpchan <- uptime
 		}
 	}
-}
-
-func BroadcasterProc(db *Database, mcast string, tcpport string, resp chan uptime.Uptime) {
-	udptrigger := make(chan uptime.Uptime)
-	tcptrigger := make(chan uptime.Uptime)
-	if runningConfig.UseUDP {
-		udpe := udpBroadcaster(mcast, udptrigger)
-		if udpe != nil {
-			log.Fatal(udpe)
-		}
-	}
-	if runningConfig.UseTCP {
-		tcpe := tcpBroadcaster(tcpport, tcptrigger)
-		if tcpe != nil {
-			log.Fatal(tcpe)
-		}
-	}
-
-	startuptime, _ := uptime.GetUptime()
-	startuptime.Lifetime = time.Duration(runningConfig.HostTimeout) * time.Second
-	resp <- startuptime
-	if runningConfig.UseUDP {
-		udptrigger <- startuptime
-	}
-	if runningConfig.UseTCP {
-		tcptrigger <- startuptime
-	}
-	timer := time.NewTimer(time.Duration(runningConfig.BroadcastInterval) * time.Second)
-	for {
-		select {
-		case <-timer.C:
-			newuptime, err := uptime.GetUptime()
-			newuptime.Lifetime = time.Duration(runningConfig.HostTimeout) * time.Second
-			if err != nil {
-				log.Fatal(err)
-			}
-			resp <- newuptime
-			if runningConfig.UseUDP {
-				udptrigger <- newuptime
-			}
-			if runningConfig.UseTCP {
-				tcptrigger <- newuptime
-			}
-			if runningConfig.Broadcast {
-				go dobroadcastall(db, newuptime.Hostname, udptrigger, tcptrigger)
-			}
-			timer = time.NewTimer(time.Duration(runningConfig.BroadcastInterval) * time.Second)
-		}
-	}
-}
-
-func Broadcaster(db *Database, mcastaddr string, tcpport string) (chan uptime.Uptime, error) {
-	resp := make(chan uptime.Uptime)
-	go BroadcasterProc(db, mcastaddr, tcpport, resp)
-	return resp, nil
 }
 
 func Server(d *Database) {
@@ -286,24 +226,88 @@ func Server(d *Database) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	mechan, err := Broadcaster(d, MulticastAddr+MulticastPort, TCPBroadcastPort)
-	if err != nil {
-		log.Fatal(err)
+
+	udptrigger := make(chan uptime.Uptime)
+	tcptrigger := make(chan uptime.Uptime)
+	UseUDP := runningConfig.UseUDP
+	UseTCP := runningConfig.UseTCP
+	if UseUDP {
+		udpe := udpBroadcaster(MulticastAddr+MulticastPort, udptrigger)
+		if udpe != nil {
+			log.Fatal(udpe)
+		}
 	}
+	if UseTCP {
+		tcpe := tcpBroadcaster(TCPBroadcastPort, tcptrigger)
+		if tcpe != nil {
+			log.Fatal(tcpe)
+		}
+	}
+
+	startuptime, _ := uptime.GetUptime()
+	startuptime.Lifetime = time.Duration(runningConfig.HostTimeout) * time.Second
+	if e := d.AddHost(startuptime.Hostname, startuptime); e != nil {
+		log.Fatal(e)
+	}
+	myhostname = startuptime.Hostname
+	if runningConfig.Verbose {
+		if runningConfig.PrintMessages {
+			log.Printf("updated uptime: %v", startuptime)
+		} else {
+			log.Printf("update uptime")
+		}
+	}
+
+	if UseUDP {
+		udptrigger <- startuptime
+	}
+	if UseTCP {
+		tcptrigger <- startuptime
+	}
+	timer := time.NewTimer(time.Duration(runningConfig.BroadcastInterval) * time.Second)
+
 	for {
 		select {
+		case <-timer.C:
+			newuptime, err := uptime.GetUptime()
+			newuptime.Lifetime = time.Duration(runningConfig.HostTimeout) * time.Second
+			if err != nil {
+				log.Fatal(err)
+			}
+			if e := d.AddHost(newuptime.Hostname, newuptime); e != nil {
+				log.Fatal(e)
+			}
+			myhostname = newuptime.Hostname
+			if runningConfig.Verbose {
+				if runningConfig.PrintMessages {
+					log.Printf("updated uptime: %v", newuptime)
+				} else {
+					log.Printf("update uptime")
+				}
+			}
+			if UseUDP {
+				udptrigger <- newuptime
+			}
+			if UseTCP {
+				tcptrigger <- newuptime
+			}
+			if runningConfig.Broadcast {
+				dobroadcastall(d, newuptime.Hostname, UseUDP, udptrigger, UseTCP, tcptrigger)
+			}
+			timer = time.NewTimer(time.Duration(runningConfig.BroadcastInterval) * time.Second)
 		case udpNeighbourUptime := <-udpchan:
+			if udpNeighbourUptime.Hostname == myhostname {
+				continue
+			}
 			e := d.AddHost(udpNeighbourUptime.Hostname, udpNeighbourUptime)
 			if e != nil {
 				log.Fatal(e)
 			}
 		case tcpNeighbourUptime := <-tcpchan:
-			e := d.AddHost(tcpNeighbourUptime.Hostname, tcpNeighbourUptime)
-			if e != nil {
-				log.Fatal(e)
+			if tcpNeighbourUptime.Hostname == myhostname {
+				continue
 			}
-		case myUptime := <-mechan:
-			e := d.AddHost(myUptime.Hostname, myUptime)
+			e := d.AddHost(tcpNeighbourUptime.Hostname, tcpNeighbourUptime)
 			if e != nil {
 				log.Fatal(e)
 			}
