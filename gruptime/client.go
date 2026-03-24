@@ -40,7 +40,7 @@ func TcpConnProc(db *Database, conn net.Conn) {
 	}
 }
 
-func ClientServer(db *Database) {
+func ClientServer(clientchan chan net.Conn) {
 	if runningConfig.Verbose {
 		log.Print("starting client connection server")
 	}
@@ -52,8 +52,9 @@ func ClientServer(db *Database) {
 		conn, err := ln.Accept()
 		if err != nil {
 			log.Print(err)
+			continue
 		}
-		go TcpConnProc(db, conn)
+		clientchan <- conn
 	}
 }
 
@@ -76,21 +77,7 @@ func TCPGetUptimes(addr string) ([]uptime.Uptime, map[string]bool, error) {
 	return msg.Uptimes, msg.Peers, nil
 }
 
-func ReloadProc(conn net.Conn) {
-	defer conn.Close()
-	conf, err := readConfigfile(configfile)
-	if err != nil {
-		log.Printf("unable to read config file \"%s\": %v", configfile, err)
-		return
-	}
-	if runningConfig.Verbose {
-		log.Printf("reloading config file \"%s\"", configfile)
-	}
-	updateConfiguration(conf)
-	printConfig()
-}
-
-func ReloadServer() {
+func ReloadServer(reloadchan chan net.Conn) {
 	if noreloads {
 		log.Print("configuration reloading disabled")
 		return
@@ -107,7 +94,7 @@ func ReloadServer() {
 		if err != nil {
 			log.Print(err)
 		}
-		go ReloadProc(conn)
+		reloadchan <- conn
 	}
 }
 

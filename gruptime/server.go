@@ -44,32 +44,31 @@ func udpListenerProc(conn *net.UDPConn, resp chan uptime.Uptime) {
 	}
 }
 
-func udpListener(straddr string) (chan uptime.Uptime, error) {
+func udpListener(straddr string, peerchan chan uptime.Uptime) error {
 	var iface *net.Interface = nil
-	resp := make(chan uptime.Uptime)
 	if !runningConfig.UseUDP {
-		return resp, nil
+		return nil
 	}
 	if runningConfig.Verbose {
 		log.Print("listening on udp multicast")
 	}
 	addr, err := net.ResolveUDPAddr("udp", straddr)
 	if err != nil {
-		return resp, err
+		return err
 	}
 	if runningConfig.Interface != "" {
 		var err error
 		iface, err = net.InterfaceByName(runningConfig.Interface)
 		if err != nil {
-			return resp, err
+			return err
 		}
 	}
 	conn, err := net.ListenMulticastUDP("udp", iface, addr)
 	if err != nil {
-		return resp, err
+		return err
 	}
-	go udpListenerProc(conn, resp)
-	return resp, nil
+	go udpListenerProc(conn, peerchan)
+	return nil
 }
 
 func tcpListenerWorker(conn net.Conn, resp chan uptime.Uptime) {
@@ -107,20 +106,19 @@ func tcpListenerProc(ln net.Listener, resp chan uptime.Uptime) {
 	}
 }
 
-func tcpListener(tcpport string) (chan uptime.Uptime, error) {
-	resp := make(chan uptime.Uptime)
+func tcpListener(tcpport string, peerchan chan uptime.Uptime) error {
 	if !runningConfig.UseTCP {
-		return resp, nil
+		return nil
 	}
 	if runningConfig.Verbose {
 		log.Print("listening on tcp \"multicast\"")
 	}
 	ln, err := net.Listen("tcp", runningConfig.BindAddress+tcpport)
 	if err != nil {
-		return resp, err
+		return err
 	}
-	go tcpListenerProc(ln, resp)
-	return resp, nil
+	go tcpListenerProc(ln, peerchan)
+	return nil
 }
 
 func udpBroadcasterProc(conn *net.UDPConn, trigger chan uptime.Uptime) {
@@ -214,16 +212,15 @@ func dobroadcastall(db *Database, myhostname string, UseUDP bool, udpchan chan u
 	}
 }
 
-func Server(d *Database) {
+func Server(d *Database, clientchan chan net.Conn, reloadchan chan net.Conn) {
 	if runningConfig.Verbose {
 		log.Print("starting multicast server")
 	}
-	udpchan, err := udpListener(MulticastAddr + MulticastPort)
-	if err != nil {
+	peerchan := make(chan uptime.Uptime)
+	if err := udpListener(MulticastAddr+MulticastPort, peerchan); err != nil {
 		log.Fatal(err)
 	}
-	tcpchan, err := tcpListener(TCPBroadcastPort)
-	if err != nil {
+	if err := tcpListener(TCPBroadcastPort, peerchan); err != nil {
 		log.Fatal(err)
 	}
 
@@ -295,22 +292,29 @@ func Server(d *Database) {
 				dobroadcastall(d, newuptime.Hostname, UseUDP, udptrigger, UseTCP, tcptrigger)
 			}
 			timer = time.NewTimer(time.Duration(runningConfig.BroadcastInterval) * time.Second)
-		case udpNeighbourUptime := <-udpchan:
-			if udpNeighbourUptime.Hostname == myhostname {
+		case NeighbourUptime := <-peerchan:
+			if NeighbourUptime.Hostname == myhostname {
 				continue
 			}
-			e := d.AddHost(udpNeighbourUptime.Hostname, udpNeighbourUptime)
+			e := d.AddHost(NeighbourUptime.Hostname, NeighbourUptime)
 			if e != nil {
 				log.Fatal(e)
 			}
-		case tcpNeighbourUptime := <-tcpchan:
-			if tcpNeighbourUptime.Hostname == myhostname {
+		case clientConn := <-clientchan:
+			go TcpConnProc(d, clientConn)
+		case reloadConn := <-reloadchan:
+			conf, err := readConfigfile(configfile)
+			if err != nil {
+				log.Printf("unable to read config file \"%s\": %v", configfile, err)
+				reloadConn.Close()
 				continue
 			}
-			e := d.AddHost(tcpNeighbourUptime.Hostname, tcpNeighbourUptime)
-			if e != nil {
-				log.Fatal(e)
+			if runningConfig.Verbose {
+				log.Printf("reloading config file \"%s\"", configfile)
 			}
+			updateConfiguration(conf)
+			printConfig()
+			reloadConn.Close()
 		}
 	}
 }
@@ -318,9 +322,11 @@ func Server(d *Database) {
 func servermain() {
 	printConfig()
 	db := initUptimedb()
-	go ClientServer(db)
+	clientchan := make(chan net.Conn)
+	reloadchan := make(chan net.Conn)
+	go ClientServer(clientchan)
 	if !noconfig {
-		go ReloadServer()
+		go ReloadServer(reloadchan)
 	}
-	Server(db)
+	Server(db, clientchan, reloadchan)
 }
