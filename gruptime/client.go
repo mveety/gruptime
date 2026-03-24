@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/gob"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -282,7 +283,7 @@ func printUptime(u uptime.Uptime) {
 	fmt.Printf("%-16s %-8s %s, %-9s load %.2f, %.2f, %.2f%s\n", u.Hostname, u.OS, uptime, nusers, u.Load1, u.Load5, u.Load15, lifetimestr)
 }
 
-func clientmain() int {
+func clientmain(asjson bool) int {
 	uptimes, allpeers, err := TCPGetUptimes("127.0.0.1")
 	if err != nil {
 		fmt.Printf("error: unable to connect to local daemon: %v\n", err)
@@ -292,6 +293,16 @@ func clientmain() int {
 	uptimesmap := make(map[string]uptime.Uptime)
 	for _, u := range uptimes {
 		uptimesmap[u.Hostname] = u
+	}
+
+	if asjson {
+		uptimebytes, err := json.MarshalIndent(uptimes, "", "\t")
+		if err != nil {
+			fmt.Printf("error: unable to format as json: %v", err)
+			os.Exit(-1)
+		}
+		fmt.Println(string(uptimebytes))
+		os.Exit(0)
 	}
 
 	if printnodes {

@@ -15,15 +15,15 @@ import (
 )
 
 type Uptime struct {
-	Version  int
-	Hostname string
-	OS       string
-	Time     time.Duration
-	Load1    float64
-	Load5    float64
-	Load15   float64
-	NUsers   uint64
-	Lifetime time.Duration
+	Version  int           `json:"version"`
+	Hostname string        `json:"hostname"`
+	OS       string        `json:"os"`
+	Time     time.Duration `json:"uptime"`
+	Load1    float64       `json:"load1"`
+	Load5    float64       `json:"load5"`
+	Load15   float64       `json:"load15"`
+	NUsers   uint64        `json:"nusers"`
+	Lifetime time.Duration `json:"lifetime"`
 }
 
 type loadaverage struct {

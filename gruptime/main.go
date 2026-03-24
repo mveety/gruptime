@@ -59,7 +59,16 @@ var (
 	noconfig      bool   = false
 	verbose       bool   = false
 	runningconfig bool   = false
+	asjson        bool   = false
 )
+
+func formatConfig(conf Config) (string, error) {
+	dat, err := json.MarshalIndent(conf, "", "\t")
+	if err != nil {
+		return "", err
+	}
+	return string(dat), nil
+}
 
 func readConfigfile(file string) (Config, error) {
 	confdata, err := os.ReadFile(file)
@@ -145,6 +154,7 @@ func main() {
 	flag.BoolVar(&noconfig, "noconfig", false, "Disable loading configuration (server)")
 	flag.BoolVar(&verbose, "verbose", false, "print debugging messages")
 	flag.BoolVar(&runningconfig, "runningconfig", false, "get running configuration (client)")
+	flag.BoolVar(&asjson, "asjson", false, "output as json (client)")
 
 	flag.Parse()
 
@@ -186,7 +196,16 @@ func main() {
 				fmt.Printf("error: unable to connect to local daemon: %v\n", err)
 				os.Exit(-1)
 			}
-			printConfig(ServerConf.Rconfig)
+			if asjson {
+				confjson, err := formatConfig(ServerConf.Rconfig)
+				if err != nil {
+					fmt.Printf("error formatting: %v\n", err)
+					os.Exit(-1)
+				}
+				fmt.Println(confjson)
+			} else {
+				printConfig(ServerConf.Rconfig)
+			}
 			os.Exit(0)
 		}
 		if reloadconfig {
@@ -197,7 +216,7 @@ func main() {
 			}
 			os.Exit(0)
 		} else {
-			os.Exit(clientmain())
+			os.Exit(clientmain(asjson))
 		}
 	}
 }
