@@ -9,6 +9,7 @@ import (
 	"math"
 	"net"
 	"os"
+	"sort"
 
 	"github.com/mveety/gruptime/internal/uptime"
 )
@@ -291,9 +292,19 @@ func clientmain(asjson bool) int {
 	}
 
 	uptimesmap := make(map[string]uptime.Uptime)
-	for _, u := range uptimes {
+	hostnames := make([]string, len(uptimes))
+	allpeersnames := make([]string, len(allpeers))
+	for i, u := range uptimes {
+		hostnames[i] = u.Hostname
 		uptimesmap[u.Hostname] = u
 	}
+	i1 := 0
+	for k := range allpeers {
+		allpeersnames[i1] = k
+		i1 = i1 + 1
+	}
+	sort.Strings(hostnames)
+	sort.Strings(allpeersnames)
 
 	if asjson {
 		uptimebytes, err := json.MarshalIndent(uptimes, "", "\t")
@@ -308,22 +319,22 @@ func clientmain(asjson bool) int {
 	if printnodes {
 		if onlyalive {
 			start := true
-			for _, u := range uptimes {
+			for _, name := range hostnames {
 				if start {
-					fmt.Printf("%s", u.Hostname)
+					fmt.Printf("%s", name)
 					start = false
 				} else {
-					fmt.Printf(" %s", u.Hostname)
+					fmt.Printf(" %s", name)
 				}
 			}
 		} else {
 			start := true
-			for k := range allpeers {
+			for _, name := range allpeersnames {
 				if start {
-					fmt.Printf("%s", k)
+					fmt.Printf("%s", name)
 					start = false
 				} else {
-					fmt.Printf(" %s", k)
+					fmt.Printf(" %s", name)
 				}
 			}
 		}
@@ -333,15 +344,15 @@ func clientmain(asjson bool) int {
 
 	if onlynode == "" {
 		if onlyalive {
-			for _, u := range uptimes {
-				printUptime(u)
+			for _, name := range hostnames {
+				printUptime(uptimesmap[name])
 			}
 		} else {
-			for k := range allpeers {
-				if allpeers[k] {
-					printUptime(uptimesmap[k])
+			for _, name := range allpeersnames {
+				if allpeers[name] {
+					printUptime(uptimesmap[name])
 				} else {
-					fmt.Printf("%-16s down\n", k)
+					fmt.Printf("%-16s down\n", name)
 				}
 			}
 		}
