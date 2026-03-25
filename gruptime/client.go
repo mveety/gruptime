@@ -306,16 +306,6 @@ func clientmain(asjson bool) int {
 	sort.Strings(hostnames)
 	sort.Strings(allpeersnames)
 
-	if asjson {
-		uptimebytes, err := json.MarshalIndent(uptimes, "", "\t")
-		if err != nil {
-			fmt.Printf("error: unable to format as json: %v", err)
-			os.Exit(-1)
-		}
-		fmt.Println(string(uptimebytes))
-		os.Exit(0)
-	}
-
 	if printnodes {
 		if onlyalive {
 			start := true
@@ -343,6 +333,15 @@ func clientmain(asjson bool) int {
 	}
 
 	if onlynode == "" {
+		if asjson {
+			uptimebytes, err := json.MarshalIndent(uptimes, "", "\t")
+			if err != nil {
+				fmt.Printf("error: unable to format as json: %v", err)
+				return -1
+			}
+			fmt.Println(string(uptimebytes))
+			os.Exit(0)
+		}
 		if onlyalive {
 			for _, name := range hostnames {
 				printUptime(uptimesmap[name])
@@ -365,7 +364,16 @@ func clientmain(asjson bool) int {
 		os.Exit(-1)
 	}
 	if status {
-		printUptime(uptimesmap[onlynode])
+		if asjson {
+			uptimebytes, err := json.MarshalIndent(uptimesmap[onlynode], "", "\t")
+			if err != nil {
+				fmt.Printf("error: unable to format as json: %v", err)
+				return -1
+			}
+			fmt.Println(string(uptimebytes))
+		} else {
+			printUptime(uptimesmap[onlynode])
+		}
 	} else {
 		fmt.Printf("%-16s down\n", onlynode)
 	}
