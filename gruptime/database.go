@@ -3,6 +3,8 @@ package main
 import (
 	"errors"
 	"log"
+	"maps"
+	"strings"
 	"time"
 
 	"github.com/mveety/gruptime/internal/uptime"
@@ -60,24 +62,26 @@ func initUptimedb() *Database {
 func (d *Database) handlemessage(msg DBMessage) {
 	switch msg.op {
 	case OpAddHost:
+		newuptime := msg.data
 		timeout := time.Duration(runningConfig.HostTimeout) * time.Second
 		if msg.data.Lifetime > 0 {
-			timeout = msg.data.Lifetime
+			timeout = newuptime.Lifetime
 		} else {
-			msg.data.Lifetime = time.Duration(runningConfig.HostTimeout) * time.Second
+			newuptime.Lifetime = time.Duration(runningConfig.HostTimeout) * time.Second
 		}
-		endtime, err := d.timers.EndTime(msg.data.Hostname)
-		if err != nil && msg.data.Lifetime < time.Until(endtime) {
+		endtime, err := d.timers.EndTime(newuptime.Hostname)
+		if err != nil && newuptime.Lifetime < time.Until(endtime) {
 			if runningConfig.Verbose {
-				log.Printf("dropping shorter lived uptime for %s", msg.data.Hostname)
+				log.Printf("dropping shorter lived uptime for %s", newuptime.Hostname)
 			}
 			msg.resp <- DBResponse{err: nil}
 			return
 		}
-		d.data[msg.data.Hostname] = msg.data
-		d.timers.RegisterHost(msg.data.Hostname, timeout)
-		d.peers[msg.data.Hostname] = true
-		d.peertimers.RegisterHost(msg.data.Hostname, time.Duration(runningConfig.PeerTimeout)*time.Second)
+		hostname := strings.Clone(newuptime.Hostname)
+		d.data[hostname] = newuptime
+		d.timers.RegisterHost(hostname, timeout)
+		d.peers[hostname] = true
+		d.peertimers.RegisterHost(hostname, time.Duration(runningConfig.PeerTimeout)*time.Second)
 		msg.resp <- DBResponse{err: nil}
 		return
 	case OpGetHost:
@@ -122,9 +126,10 @@ func (d *Database) handlemessage(msg DBMessage) {
 			msg.resp <- DBResponse{err: ErrNoHost}
 			return
 		}
+		curdata := maps.Clone(d.data)
 		uptimes := make([]uptime.Uptime, size)
 		i := 0
-		for _, u := range d.data {
+		for _, u := range curdata {
 			endtime, err := d.timers.EndTime(u.Hostname)
 			if err != nil {
 				panic(err)
@@ -140,7 +145,7 @@ func (d *Database) handlemessage(msg DBMessage) {
 		if size < 1 {
 			msg.resp <- DBResponse{err: ErrNoHost}
 		}
-		msg.resp <- DBResponse{err: nil, peers: d.peers}
+		msg.resp <- DBResponse{err: nil, peers: maps.Clone(d.peers)}
 		return
 	}
 }

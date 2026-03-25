@@ -10,12 +10,17 @@ const (
 	TimerOpRemaining = iota
 )
 
+type AlarmMessage struct {
+	resp chan time.Time
+}
+
 type Alarm struct {
 	Hostname string
 	control  chan time.Duration
 	cancel   chan int
 	manager  chan string
 	endtime  time.Time
+	endtimes chan AlarmMessage
 }
 
 type Timer struct {
@@ -60,6 +65,7 @@ func managerproc(man *TimerManager) {
 					control:  make(chan time.Duration),
 					cancel:   make(chan int),
 					manager:  managerchan,
+					endtimes: make(chan AlarmMessage),
 				}
 				alarms[updatemsg.Hostname] = newalarm
 				go timerproc(newalarm)
@@ -97,15 +103,23 @@ func managerproc(man *TimerManager) {
 						status: errors.New("timer missing"),
 					}
 				} else {
+					endtime := alarm.getendtime()
 					req.resp <- TimerResponse{
 						op:     TimerOpRemaining,
-						time:   alarm.endtime,
+						time:   endtime,
 						status: nil,
 					}
 				}
 			}
 		}
 	}
+}
+
+func (alarm *Alarm) getendtime() time.Time {
+	msg := AlarmMessage{resp: make(chan time.Time)}
+	alarm.endtimes <- msg
+	endtime := <-msg.resp
+	return endtime
 }
 
 func timerproc(alarm *Alarm) {
@@ -126,6 +140,9 @@ func timerproc(alarm *Alarm) {
 		case <-timer.C:
 			alarm.manager <- alarm.Hostname
 			return
+		case msg := <-alarm.endtimes:
+			currentendtime := alarm.endtime
+			msg.resp <- currentendtime
 		}
 	}
 }
