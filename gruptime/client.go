@@ -8,7 +8,6 @@ import (
 	"log"
 	"math"
 	"net"
-	"os"
 	"sort"
 
 	"github.com/mveety/gruptime/internal/uptime"
@@ -53,6 +52,21 @@ type TcpResponse struct {
 	Error    ClientError
 	Uresp    UptimeResponse
 	Cresp    ConfigResponse
+}
+
+type DownHost struct {
+	Hostname string `json:"hostname"`
+	Online   bool   `json:"online"`
+}
+
+type NodeStatus struct {
+	uptimes   []uptime.Uptime
+	uptimemap map[string]uptime.Uptime
+	peers     map[string]bool
+	allmap    map[string]any
+	peernames []string
+	hostnames []string
+	allarray  []any
 }
 
 type ReloadResponse struct {
@@ -284,6 +298,153 @@ func printUptime(u uptime.Uptime) {
 	fmt.Printf("%-16s %-8s %s, %-9s load %.2f, %.2f, %.2f%s\n", u.Hostname, u.OS, uptime, nusers, u.Load1, u.Load5, u.Load15, lifetimestr)
 }
 
+func processNodeStatus(uptimes []uptime.Uptime, allpeers map[string]bool) *NodeStatus {
+	uptimesmap := make(map[string]uptime.Uptime)
+	hostnames := make([]string, len(uptimes))
+	allpeersnames := make([]string, len(allpeers))
+	allmap := make(map[string]any)
+	allarray := make([]any, len(allpeers))
+	for i, u := range uptimes {
+		hostnames[i] = u.Hostname
+		uptimesmap[u.Hostname] = u
+	}
+	i1 := 0
+	for host, status := range allpeers {
+		allpeersnames[i1] = host
+		if status {
+			allmap[host] = uptimesmap[host]
+			allarray[i1] = uptimesmap[host]
+		} else {
+			allmap[host] = DownHost{
+				Hostname: host,
+				Online:   false,
+			}
+			allarray[i1] = allmap[host]
+		}
+		i1 = i1 + 1
+	}
+
+	sort.Strings(hostnames)
+	sort.Strings(allpeersnames)
+
+	return &NodeStatus{
+		uptimes:   uptimes,
+		uptimemap: uptimesmap,
+		peers:     allpeers,
+		peernames: allpeersnames,
+		hostnames: hostnames,
+		allmap:    allmap,
+		allarray:  allarray,
+	}
+}
+
+func jsonError(err error) int {
+	fmt.Printf("error: unable to format as json: %v\n", err)
+	return -1
+}
+
+func printNodes(nodestatus *NodeStatus, onlyliving bool, asjson bool) int {
+	if onlyliving {
+		if asjson {
+			hostbytes, err := json.Marshal(nodestatus.hostnames)
+			if err != nil {
+				return jsonError(err)
+			}
+			fmt.Println(string(hostbytes))
+			return 0
+		}
+		start := true
+		for _, name := range nodestatus.hostnames {
+			if start {
+				fmt.Printf("%s", name)
+				start = false
+			} else {
+				fmt.Printf(" %s", name)
+			}
+		}
+	} else {
+		if asjson {
+			peerbytes, err := json.Marshal(nodestatus.peernames)
+			if err != nil {
+				return jsonError(err)
+			}
+			fmt.Println(string(peerbytes))
+			return 0
+		}
+		start := true
+		for _, name := range nodestatus.peernames {
+			if start {
+				fmt.Printf("%s", name)
+				start = false
+			} else {
+				fmt.Printf(" %s", name)
+			}
+		}
+	}
+	fmt.Printf("\n")
+	return 0
+}
+
+func printAllNodes(nodestatus *NodeStatus, onlyalive bool, asjson bool) int {
+	if onlyalive {
+		if asjson {
+			uptimebytes, err := json.MarshalIndent(nodestatus.uptimes, "", "\t")
+			if err != nil {
+				return jsonError(err)
+			}
+			fmt.Println(string(uptimebytes))
+			return 0
+		}
+		for _, name := range nodestatus.hostnames {
+			printUptime(nodestatus.uptimemap[name])
+		}
+		return 0
+	}
+
+	if asjson {
+		allhostbytes, err := json.MarshalIndent(nodestatus.allarray, "", "\t")
+		if err != nil {
+			return jsonError(err)
+		}
+		fmt.Println(string(allhostbytes))
+		return 0
+	}
+
+	for _, name := range nodestatus.peernames {
+		if nodestatus.peers[name] {
+			printUptime(nodestatus.uptimemap[name])
+			continue
+		}
+		fmt.Printf("%-16s down\n", name)
+	}
+	return 0
+}
+
+func printNode(nodename string, nodestatus *NodeStatus, asjson bool) int {
+	status, exists := nodestatus.peers[nodename]
+	if !exists {
+		fmt.Printf("error: node \"%s\" not known!\n", nodename)
+		return -1
+	}
+
+	if asjson {
+		uptimebytes, err := json.MarshalIndent(nodestatus.uptimemap[nodename], "", "\t")
+		if err != nil {
+			return jsonError(err)
+		}
+		fmt.Println(string(uptimebytes))
+		return 0
+	}
+
+	if status {
+		printUptime(nodestatus.uptimemap[nodename])
+		return 0
+	}
+
+	fmt.Printf("%-16s down\n", nodename)
+	return 0
+}
+
 func clientmain(asjson bool) int {
 	uptimes, allpeers, err := TCPGetUptimes("127.0.0.1")
 	if err != nil {
@@ -291,91 +452,15 @@ func clientmain(asjson bool) int {
 		return -1
 	}
 
-	uptimesmap := make(map[string]uptime.Uptime)
-	hostnames := make([]string, len(uptimes))
-	allpeersnames := make([]string, len(allpeers))
-	for i, u := range uptimes {
-		hostnames[i] = u.Hostname
-		uptimesmap[u.Hostname] = u
-	}
-	i1 := 0
-	for k := range allpeers {
-		allpeersnames[i1] = k
-		i1 = i1 + 1
-	}
-	sort.Strings(hostnames)
-	sort.Strings(allpeersnames)
+	nodestatus := processNodeStatus(uptimes, allpeers)
 
 	if printnodes {
-		if onlyalive {
-			start := true
-			for _, name := range hostnames {
-				if start {
-					fmt.Printf("%s", name)
-					start = false
-				} else {
-					fmt.Printf(" %s", name)
-				}
-			}
-		} else {
-			start := true
-			for _, name := range allpeersnames {
-				if start {
-					fmt.Printf("%s", name)
-					start = false
-				} else {
-					fmt.Printf(" %s", name)
-				}
-			}
-		}
-		fmt.Printf("\n")
-		return 0
+		return printNodes(nodestatus, onlyalive, asjson)
 	}
 
 	if onlynode == "" {
-		if asjson {
-			uptimebytes, err := json.MarshalIndent(uptimes, "", "\t")
-			if err != nil {
-				fmt.Printf("error: unable to format as json: %v", err)
-				return -1
-			}
-			fmt.Println(string(uptimebytes))
-			os.Exit(0)
-		}
-		if onlyalive {
-			for _, name := range hostnames {
-				printUptime(uptimesmap[name])
-			}
-		} else {
-			for _, name := range allpeersnames {
-				if allpeers[name] {
-					printUptime(uptimesmap[name])
-				} else {
-					fmt.Printf("%-16s down\n", name)
-				}
-			}
-		}
-		return 0
+		return printAllNodes(nodestatus, onlyalive, asjson)
 	}
 
-	status, exists := allpeers[onlynode]
-	if !exists {
-		fmt.Printf("error: node \"%s\" not known!\n", onlynode)
-		os.Exit(-1)
-	}
-	if status {
-		if asjson {
-			uptimebytes, err := json.MarshalIndent(uptimesmap[onlynode], "", "\t")
-			if err != nil {
-				fmt.Printf("error: unable to format as json: %v", err)
-				return -1
-			}
-			fmt.Println(string(uptimebytes))
-		} else {
-			printUptime(uptimesmap[onlynode])
-		}
-	} else {
-		fmt.Printf("%-16s down\n", onlynode)
-	}
-	return 0
+	return printNode(onlynode, nodestatus, asjson)
 }
