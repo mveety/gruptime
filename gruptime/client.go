@@ -428,7 +428,7 @@ func printNode(nodename string, nodestatus *NodeStatus, asjson bool) int {
 	}
 
 	if asjson {
-		uptimebytes, err := json.MarshalIndent(nodestatus.uptimemap[nodename], "", "\t")
+		uptimebytes, err := json.MarshalIndent(nodestatus.allmap[nodename], "", "\t")
 		if err != nil {
 			return jsonError(err)
 		}
