@@ -132,8 +132,9 @@ func timerproc(alarm *Alarm) {
 	for {
 		select {
 		case newinterval := <-control:
+			timer.Stop()
 			alarm.endtime = time.Now().Add(newinterval)
-			timer = time.NewTimer(newinterval)
+			timer.Reset(newinterval)
 		case <-cancel:
 			timer.Stop()
 			return
