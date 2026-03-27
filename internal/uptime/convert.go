@@ -129,14 +129,18 @@ func (msgbuf UptimeBuffer) Uptime() (Uptime, error) {
 		return Uptime{}, fmt.Errorf("message wrong size: is %d should be %d)", len(msgbuf), msglen)
 	}
 	switch msgbuf[2] {
+	default:
+		uptime, err := msgbuf.uptimev3()
+		if err == nil {
+			err = fmt.Errorf("message too old or too new (support 3-%d, got %d)", ProtoVersion, uptime.Version)
+		}
+		return uptime, err
 	case 3:
 		return msgbuf.uptimev3()
 	case 4:
 		return msgbuf.uptimev4()
 	case 5:
 		return msgbuf.uptimev5()
-	default:
-		return Uptime{}, fmt.Errorf("protocol too old (%d < %d)", ProtoVersion, msgbuf[2])
 	}
 }
 
