@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"log"
 	"time"
 )
 
@@ -76,13 +77,17 @@ func managerproc(man *TimerManager) {
 			alarm, exists := alarms[cancelhost]
 			if exists {
 				alarm.cancel <- 1
+				continue
 			}
+			log.Printf("got cancelhost message for non-existent host \"%s\"", cancelhost)
 		case deadhost := <-managerchan:
 			deadalarm, exists := alarms[deadhost]
 			if exists {
 				delete(alarms, deadalarm.Hostname)
 				man.Deadhosts <- deadalarm.Hostname
+				continue
 			}
+			log.Fatalf("got deadhost alarm from non-existent host \"%s\"", deadhost)
 		case <-man.Cancel:
 			for _, value := range alarms {
 				value.cancel <- 1

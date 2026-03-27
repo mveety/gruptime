@@ -24,6 +24,7 @@ type Uptime struct {
 	Load15   float64       `json:"load-average-15"`
 	NUsers   uint64        `json:"users"`
 	Lifetime time.Duration `json:"lifetime"`
+	Issued   int64         `json:"issued"`
 }
 
 type loadaverage struct {
@@ -58,6 +59,7 @@ func GetUptime() (Uptime, error) {
 		Load15:   l.load15,
 		NUsers:   uint64(nusers()),
 		Lifetime: 0,
+		Issued:   int64(time.Now().Unix()),
 	}, nil
 }
 

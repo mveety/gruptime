@@ -69,13 +69,25 @@ func (d *Database) handlemessage(msg DBMessage) {
 		} else {
 			newuptime.Lifetime = time.Duration(runningConfig.HostTimeout) * time.Second
 		}
-		endtime, err := d.timers.EndTime(newuptime.Hostname)
-		if err != nil && newuptime.Lifetime < time.Until(endtime) {
-			if runningConfig.Verbose {
-				log.Printf("dropping shorter lived uptime for %s", newuptime.Hostname)
+		switch newuptime.Version {
+		case 5:
+			olduptime, exists := d.data[newuptime.Hostname]
+			if exists && olduptime.Version == 5 && newuptime.Issued <= olduptime.Issued {
+				if runningConfig.Verbose {
+					log.Printf("dropping older uptime for %s", newuptime.Hostname)
+				}
+				msg.resp <- DBResponse{err: nil}
+				return
 			}
-			msg.resp <- DBResponse{err: nil}
-			return
+		case 4:
+			endtime, err := d.timers.EndTime(newuptime.Hostname)
+			if err != nil && newuptime.Lifetime < time.Until(endtime) {
+				if runningConfig.Verbose {
+					log.Printf("dropping shorter lived uptime for %s", newuptime.Hostname)
+				}
+				msg.resp <- DBResponse{err: nil}
+				return
+			}
 		}
 		hostname := strings.Clone(newuptime.Hostname)
 		d.data[hostname] = newuptime
