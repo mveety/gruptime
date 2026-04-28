@@ -17,6 +17,7 @@ import (
 type Uptime struct {
 	Version  int           `json:"message-version"`
 	Hostname string        `json:"hostname"`
+	Online   bool          `json:"online"`
 	OS       string        `json:"system"`
 	Time     time.Duration `json:"uptime"`
 	Load1    float64       `json:"load-average-1"`
@@ -52,6 +53,7 @@ func GetUptime() (Uptime, error) {
 	return Uptime{
 		Version:  int(ProtoVersion),
 		Hostname: hostname,
+		Online:   true,
 		OS:       getos(),
 		Time:     t,
 		Load1:    l.load1,
