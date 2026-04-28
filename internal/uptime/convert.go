@@ -163,6 +163,7 @@ func (msgbuf UptimeBuffer) uptimev3() (Uptime, error) {
 	return Uptime{
 		Version:  3,
 		Hostname: hostname,
+		Online:   true,
 		OS:       Byte2OS(msgbuf[1]),
 		Time:     time.Duration(uptimeSeconds),
 		Load1:    load1,
@@ -194,6 +195,7 @@ func (msgbuf UptimeBuffer) uptimev4() (Uptime, error) {
 	return Uptime{
 		Version:  4,
 		Hostname: hostname,
+		Online:   true,
 		OS:       Byte2OS(msgbuf[1]),
 		Time:     time.Duration(uptimeSeconds),
 		Load1:    load1,
@@ -226,6 +228,7 @@ func (msgbuf UptimeBuffer) uptimev5() (Uptime, error) {
 	return Uptime{
 		Version:  5,
 		Hostname: hostname,
+		Online:   true,
 		OS:       Byte2OS(msgbuf[1]),
 		Time:     time.Duration(uptimeSeconds),
 		Load1:    load1,
