@@ -10,9 +10,12 @@ byte2os(char ostype)
 	case LINUX: return "Linux";
 	case WINDOWS: return "Windows";
 	case OPENVMS: return "OpenVMS";
+	case OPENBSD: return "OpenBSD";
+	case NETBSD: return "NetBSD";
+	case SOLARIS: return "Solaris";
+	case ILLUMOS: return "Illumos";
 	case PLAN9: return "Plan 9";
-	case UNKNOWN: return "Unknown";
-	default: return "Invalid";
+	default: return "Unknown";
 	}
 }
 

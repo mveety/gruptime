@@ -2,11 +2,14 @@
 
 enum {
 	/* operating systems */
-	UNKNOWN = 254,
 	FREEBSD = 1,
 	LINUX = 2,
 	WINDOWS = 3,
 	OPENVMS = 4,
+	OPENBSD = 5,
+	NETBSD = 6,
+	SOLARIS = 7,
+	ILLUMOS = 8,
 	PLAN9 = 9,
 	/* other stuff */
 	PROTOVERSION = 4,
